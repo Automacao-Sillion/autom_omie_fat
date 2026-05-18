@@ -1,0 +1,19 @@
+# ============================================================
+# Tema do Streamlit — Sillion (navy + ciano)
+# Alinhado com a identidade visual do portal Omie
+# ============================================================
+
+[theme]
+primaryColor = "#0F2A33"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F3F5F7"
+textColor = "#1A2D38"
+font = "sans serif"
+
+[server]
+maxUploadSize = 200
+# Habilita o servidor de arquivos estáticos da pasta /static
+enableStaticServing = true
+
+[browser]
+gatherUsageStats = false

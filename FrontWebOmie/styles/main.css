@@ -1,0 +1,411 @@
+/* ============================================================
+   Sillion — Envio de faturamento
+   Paleta inspirada no portal Omie (navy + ciano)
+   ============================================================ */
+
+/* ---------- Tokens (variáveis de tema) ---------- */
+:root {
+    /* Paleta principal */
+    --cor-primaria:        #0F2A33;  /* navy escuro (botões, navbar) */
+    --cor-primaria-hover:  #1B3D48;  /* navy mais claro (hover) */
+    --cor-acento:          #4FB7B8;  /* ciano (destaques sutis) */
+    --cor-link:            #2680C2;  /* azul de link */
+
+    /* Texto */
+    --cor-texto:           #1A2D38;  /* slate escuro */
+    --cor-texto-muted:     #5A6B78;  /* slate médio */
+    --cor-texto-claro:     #FFFFFF;
+
+    /* Superfícies */
+    --cor-fundo:           #FFFFFF;
+    --cor-fundo-sutil:     #F3F5F7;  /* gray-blue de breadcrumb */
+    --cor-fundo-card:      #E7F1F4;  /* azul muito claro */
+
+    /* Bordas */
+    --cor-borda:           #D4DCE0;
+    --cor-borda-hover:     #9BA8B5;
+
+    /* Raios */
+    --raio-sm: 6px;
+    --raio-md: 10px;
+    --raio-lg: 14px;
+}
+
+/* ---------- Fonte ---------- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/* ---------- Base ---------- */
+.stApp {
+    background: var(--cor-fundo);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+#MainMenu { visibility: hidden; }
+footer    { visibility: hidden; }
+header    { visibility: hidden; }
+
+.block-container {
+    padding-top: 0 !important;
+    padding-bottom: 2rem;
+    max-width: 760px;
+}
+
+/* Tipografia: aplica em elementos semânticos.
+   Não tocamos em span/div para não quebrar fontes de ícones. */
+h1, h2, h3, h4, h5, h6, p, label {
+    font-family: 'Inter', sans-serif !important;
+    color: var(--cor-texto);
+}
+
+/* ============================================================
+   NAVBAR — barra superior estilo Omie
+   ============================================================ */
+.app-navbar {
+    /* Estoura o block-container para ocupar a largura total da viewport */
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    background: var(--cor-primaria);
+    padding: 18px max(32px, calc(50vw - 360px));
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0;
+}
+.app-navbar .brand-link {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+}
+/* Logo SVG: a versão original é preta, então invertemos via filtro
+   para que apareça branca sobre o fundo navy escuro da navbar. */
+.app-navbar .brand-logo {
+    height: 28px;
+    width: auto;
+    display: block;
+    filter: brightness(0) invert(1);
+    transition: opacity 0.15s ease;
+}
+.app-navbar .brand-link:hover .brand-logo {
+    opacity: 0.85;
+}
+/* Fallback: caso o logo não carregue, mantemos o nome textual */
+.app-navbar .brand-name {
+    font-family: 'Inter', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--cor-texto-claro);
+    letter-spacing: -0.02em;
+}
+.app-navbar .nav-links {
+    display: flex;
+    gap: 28px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.app-navbar .nav-links a {
+    color: var(--cor-texto-claro);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    opacity: 0.85;
+    transition: opacity 0.15s ease;
+}
+.app-navbar .nav-links a:hover {
+    opacity: 1;
+}
+
+/* ============================================================
+   BREADCRUMB (barra clara abaixo da navbar)
+   ============================================================ */
+.app-breadcrumb {
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    background: var(--cor-fundo-sutil);
+    padding: 14px max(32px, calc(50vw - 360px));
+    border-bottom: 1px solid var(--cor-borda);
+    font-size: 13px;
+    color: var(--cor-texto-muted);
+    margin-bottom: 40px;
+}
+.app-breadcrumb a {
+    color: var(--cor-link);
+    text-decoration: none;
+}
+.app-breadcrumb a:hover {
+    text-decoration: underline;
+}
+.app-breadcrumb .separator {
+    margin: 0 8px;
+    color: var(--cor-borda-hover);
+}
+
+/* ============================================================
+   HERO (título + subtítulo)
+   ============================================================ */
+.hero {
+    margin-bottom: 36px;
+}
+.page-title {
+    font-family: 'Inter', sans-serif;
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--cor-texto);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin: 0 0 10px;
+}
+.page-subtitle {
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    font-weight: 400;
+    color: var(--cor-texto-muted);
+    line-height: 1.55;
+    margin: 0;
+    max-width: 540px;
+}
+
+/* ============================================================
+   INPUTS
+   ============================================================ */
+.stTextInput > div > div > input {
+    border-radius: var(--raio-md);
+    border: 1px solid var(--cor-borda);
+    padding: 12px 14px;
+    font-size: 15px;
+    font-family: 'Inter', sans-serif !important;
+    background: var(--cor-fundo);
+    transition: all 0.15s ease;
+    color: var(--cor-texto);
+}
+.stTextInput > div > div > input:hover {
+    border-color: var(--cor-borda-hover);
+}
+.stTextInput > div > div > input:focus {
+    border-color: var(--cor-acento);
+    box-shadow: 0 0 0 3px rgba(79, 183, 184, 0.18);
+    outline: none;
+}
+.stTextInput label,
+.stFileUploader label {
+    font-weight: 500 !important;
+    font-size: 14px !important;
+    color: var(--cor-texto) !important;
+    margin-bottom: 6px !important;
+}
+
+/* ============================================================
+   FILE UPLOADER — abordagem minimalista
+   Estilizamos só a área externa e o botão; deixamos o resto
+   herdar do Streamlit pra não quebrar o layout interno.
+   ============================================================ */
+[data-testid="stFileUploader"] section {
+    border-radius: var(--raio-md);
+    border: 1.5px dashed var(--cor-borda);
+    background: var(--cor-fundo-sutil);
+    padding: 18px 22px;
+    transition: all 0.15s ease;
+}
+[data-testid="stFileUploader"] section:hover {
+    border-color: var(--cor-acento);
+    background: var(--cor-fundo);
+}
+
+/* Ícone de upload padrão do Streamlit (svg/icon na esquerda) */
+[data-testid="stFileUploader"] section svg {
+    color: var(--cor-texto-muted);
+    fill: var(--cor-texto-muted);
+}
+
+/* Botão "Browse files" — navy escuro com texto branco */
+[data-testid="stFileUploader"] button {
+    background: var(--cor-primaria) !important;
+    color: #FFFFFF !important;
+    border: 1px solid var(--cor-primaria) !important;
+    border-radius: var(--raio-sm) !important;
+    padding: 6px 18px !important;
+    font-weight: 500 !important;
+    font-size: 14px !important;
+    transition: background 0.15s ease !important;
+}
+[data-testid="stFileUploader"] button:hover {
+    background: var(--cor-primaria-hover) !important;
+    border-color: var(--cor-primaria-hover) !important;
+}
+/* Garante visibilidade do texto interno do botão */
+[data-testid="stFileUploader"] button p,
+[data-testid="stFileUploader"] button span:not([data-testid*="Icon"]):not([class*="material"]) {
+    color: #FFFFFF !important;
+    margin: 0 !important;
+}
+
+/* ============================================================
+   BOTÃO PRIMÁRIO — máxima especificidade
+   ============================================================ */
+html body .stButton > button[kind="primary"],
+html body .stButton > button[kind="primaryFormSubmit"],
+html body button[data-testid="stBaseButton-primary"],
+html body button[data-testid="baseButton-primary"] {
+    background: var(--cor-primaria) !important;
+    background-color: var(--cor-primaria) !important;
+    color: #FFFFFF !important;
+    border: none !important;
+    border-radius: var(--raio-md) !important;
+    padding: 14px 28px !important;
+    font-weight: 600 !important;
+    font-size: 15px !important;
+    font-family: 'Inter', sans-serif !important;
+    transition: all 0.15s ease !important;
+    letter-spacing: -0.01em !important;
+}
+html body .stButton > button[kind="primary"]:hover,
+html body button[data-testid="stBaseButton-primary"]:hover {
+    background: var(--cor-primaria-hover) !important;
+    background-color: var(--cor-primaria-hover) !important;
+    transform: translateY(-1px);
+}
+html body .stButton > button[kind="primary"]:active,
+html body button[data-testid="stBaseButton-primary"]:active {
+    transform: translateY(0);
+}
+
+/* Força texto branco em TODOS os descendentes (cobre <p>, <div>,
+   <span> e até <font> que o Google Translate possa injetar) */
+html body .stButton > button[kind="primary"] *,
+html body button[data-testid="stBaseButton-primary"] *,
+html body button[data-testid="baseButton-primary"] * {
+    color: #FFFFFF !important;
+    background: transparent !important;
+}
+
+/* ============================================================
+   BOTÃO SECUNDÁRIO (ex: OK do dialog)
+   ============================================================ */
+html body .stButton > button[kind="secondary"],
+html body button[data-testid="stBaseButton-secondary"],
+html body button[data-testid="baseButton-secondary"] {
+    background: var(--cor-primaria) !important;
+    background-color: var(--cor-primaria) !important;
+    color: #FFFFFF !important;
+    border: 1px solid var(--cor-primaria) !important;
+    border-radius: var(--raio-md) !important;
+    padding: 12px 24px !important;
+    font-weight: 600 !important;
+    font-size: 15px !important;
+    font-family: 'Inter', sans-serif !important;
+    transition: all 0.15s ease !important;
+}
+html body .stButton > button[kind="secondary"]:hover,
+html body button[data-testid="stBaseButton-secondary"]:hover {
+    background: var(--cor-primaria-hover) !important;
+    background-color: var(--cor-primaria-hover) !important;
+    border-color: var(--cor-primaria-hover) !important;
+    transform: translateY(-1px);
+}
+html body .stButton > button[kind="secondary"] *,
+html body button[data-testid="stBaseButton-secondary"] *,
+html body button[data-testid="baseButton-secondary"] * {
+    color: #FFFFFF !important;
+    background: transparent !important;
+}
+
+/* ============================================================
+   ÍCONE DE AJUDA (tooltip) — reseta background herdado
+   ============================================================ */
+html body button[aria-label^="Help for"],
+html body button[aria-label^="Ajuda para"],
+html body .stTooltipIcon button,
+html body [data-testid="stTooltipIcon"] button {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    min-height: auto !important;
+    color: var(--cor-texto-secundario, #5A7A84) !important;
+}
+html body button[aria-label^="Help for"] *,
+html body button[aria-label^="Ajuda para"] *,
+html body .stTooltipIcon button *,
+html body [data-testid="stTooltipIcon"] button * {
+    color: inherit !important;
+}
+
+/* ============================================================
+   PREVIEW DO ARQUIVO SELECIONADO
+   ============================================================ */
+.file-preview {
+    background: var(--cor-fundo-card);
+    border: 1px solid #C5D9DF;
+    border-radius: var(--raio-md);
+    padding: 12px 14px;
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.file-preview-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
+    background: var(--cor-primaria);
+    color: #FFFFFF;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.file-preview-icon svg {
+    display: block;
+}
+.file-preview-text {
+    flex: 1;
+    font-size: 14px;
+    color: var(--cor-texto);
+}
+.file-preview-text strong {
+    font-weight: 600;
+}
+.file-preview-size {
+    color: var(--cor-texto-muted);
+    font-weight: 400;
+}
+
+/* ============================================================
+   ALERTAS
+   ============================================================ */
+.stAlert {
+    border-radius: var(--raio-md);
+    border: 1px solid var(--cor-borda);
+    font-family: 'Inter', sans-serif !important;
+}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+.app-footer {
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    background: var(--cor-primaria);
+    padding: 24px max(32px, calc(50vw - 360px));
+    margin-top: 64px;
+    color: rgba(255, 255, 255, 0.7);
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    text-align: center;
+}
+.app-footer a {
+    color: var(--cor-acento);
+    text-decoration: none;
+    font-weight: 500;
+}
+.app-footer a:hover {
+    text-decoration: underline;
+}
+
+/* ============================================================
+   DIALOG (POP-UP)
+   ============================================================ */
+div[data-testid="stDialog"] > div {
+    border-radius: var(--raio-lg) !important;
+    border: 1px solid var(--cor-borda) !important;
+}
