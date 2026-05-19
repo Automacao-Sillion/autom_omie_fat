@@ -230,16 +230,18 @@ O Streamlit envia um `POST` JSON com o seguinte formato:
   "email": "willian.silva@sillion.com.br",
   "filename": "faturamento_mai_2026.xlsx",
   "file_base64": "UEsDBBQABgAIAAAAIQ...",
-  "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "tipo_faturamento": "TOT"
 }
 ```
 
-| Campo         | Tipo   | Descrição                                            |
-|---------------|--------|------------------------------------------------------|
-| `email`       | string | Email corporativo do remetente (já validado)         |
-| `filename`    | string | Nome original do arquivo                             |
-| `file_base64` | string | Conteúdo do arquivo codificado em Base64             |
-| `mime_type`   | string | Tipo MIME (útil para reconstruir o arquivo no N8N)   |
+| Campo              | Tipo   | Descrição                                                    |
+|--------------------|--------|--------------------------------------------------------------|
+| `email`            | string | Email corporativo do remetente (já validado)                 |
+| `filename`         | string | Nome original do arquivo                                     |
+| `file_base64`      | string | Conteúdo do arquivo codificado em Base64                     |
+| `mime_type`        | string | Tipo MIME (útil para reconstruir o arquivo no N8N)           |
+| `tipo_faturamento` | string | Esteira de processamento — valores aceitos: `TOT` ou `VALE`  |
 
 ### Como consumir no N8N
 
@@ -249,6 +251,7 @@ No nó **Webhook** (POST), os campos ficam em `$json`:
 - `{{ $json.filename }}`
 - `{{ $json.file_base64 }}`
 - `{{ $json.mime_type }}`
+- `{{ $json.tipo_faturamento }}` (útil para rotear a esteira correta com um nó **Switch**)
 
 Para reconstruir o arquivo a partir do Base64, use o nó **Move Binary Data** ou uma expressão em Code/Function:
 
@@ -368,7 +371,7 @@ Falta o arquivo `.streamlit/secrets.toml` (local) ou os Secrets no painel do Str
 - [ ] Persistir histórico de envios em planilha ou banco (Google Sheets, Supabase).
 - [ ] Aceitar múltiplos arquivos em um único envio.
 - [ ] Mostrar progresso real do processamento no N8N (polling do status).
-- [ ] Adicionar campo de "tipo de processamento" (dropdown) para o N8N rotear a esteira correta.
+- [x] ~~Adicionar campo de "tipo de faturamento" (dropdown TOT/VALE) para o N8N rotear a esteira correta.~~ ✓ implementado
 - [ ] Logar tentativas inválidas (anti-abuso, monitoramento).
 
 ---

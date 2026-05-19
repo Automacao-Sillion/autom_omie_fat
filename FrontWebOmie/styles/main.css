@@ -187,11 +187,49 @@ h1, h2, h3, h4, h5, h6, p, label {
     outline: none;
 }
 .stTextInput label,
-.stFileUploader label {
+.stFileUploader label,
+.stSelectbox label {
     font-weight: 500 !important;
     font-size: 14px !important;
     color: var(--cor-texto) !important;
     margin-bottom: 6px !important;
+}
+
+/* ============================================================
+   SELECTBOX (Tipo de faturamento)
+   Mesma identidade visual do text input
+   ============================================================ */
+.stSelectbox > div[data-baseweb="select"] > div {
+    border-radius: var(--raio-md) !important;
+    border: 1px solid var(--cor-borda) !important;
+    padding: 6px 10px !important;
+    font-size: 15px !important;
+    font-family: 'Inter', sans-serif !important;
+    background: var(--cor-fundo) !important;
+    transition: all 0.15s ease !important;
+    min-height: 46px !important;
+}
+.stSelectbox > div[data-baseweb="select"] > div:hover {
+    border-color: var(--cor-borda-hover) !important;
+}
+.stSelectbox > div[data-baseweb="select"]:focus-within > div {
+    border-color: var(--cor-acento) !important;
+    box-shadow: 0 0 0 3px rgba(79, 183, 184, 0.18) !important;
+}
+/* Itens do dropdown aberto */
+ul[role="listbox"] {
+    border-radius: var(--raio-md) !important;
+    border: 1px solid var(--cor-borda) !important;
+    font-family: 'Inter', sans-serif !important;
+}
+ul[role="listbox"] li {
+    font-size: 14px !important;
+    color: var(--cor-texto) !important;
+}
+ul[role="listbox"] li:hover,
+ul[role="listbox"] li[aria-selected="true"] {
+    background: var(--cor-fundo-card) !important;
+    color: var(--cor-primaria) !important;
 }
 
 /* ============================================================
