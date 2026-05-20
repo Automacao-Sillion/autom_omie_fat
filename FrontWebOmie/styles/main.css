@@ -1,34 +1,52 @@
 /* ============================================================
    Sillion — Envio de faturamento
-   Paleta inspirada no portal Omie (navy + ciano)
+   Paleta alinhada ao Portal de Automacoes (índigo + roxo)
    ============================================================ */
 
 /* ---------- Tokens (variáveis de tema) ---------- */
 :root {
-    /* Paleta principal */
-    --cor-primaria:        #0F2A33;  /* navy escuro (botões, navbar) */
-    --cor-primaria-hover:  #1B3D48;  /* navy mais claro (hover) */
-    --cor-acento:          #4FB7B8;  /* ciano (destaques sutis) */
-    --cor-link:            #2680C2;  /* azul de link */
+    /* Paleta principal — purple/indigo (Faturamento) */
+    --cor-primaria:        #6366F1;  /* índigo */
+    --cor-primaria-hover:  #4F46E5;  /* índigo escuro */
+    --cor-acento:          #8B5CF6;  /* roxo */
+    --cor-acento-hover:    #7C3AED;  /* roxo escuro */
+    --cor-link:            #6366F1;
+
+    /* Paleta hero (dark gradient) */
+    --hero-bg-1:           #0F172A;
+    --hero-bg-2:           #1a2744;
+    --hero-bg-3:           #0F3460;
+    --hero-glow:           rgba(99,102,241,0.18);
+    --hero-badge-bg:       rgba(99,102,241,0.15);
+    --hero-badge-border:   rgba(99,102,241,0.4);
+    --hero-badge-text:     #A5B4FC;
 
     /* Texto */
-    --cor-texto:           #1A2D38;  /* slate escuro */
-    --cor-texto-muted:     #5A6B78;  /* slate médio */
-    --cor-texto-claro:     #FFFFFF;
+    --cor-texto:           #0F172A;  /* slate-900 */
+    --cor-texto-muted:     #64748B;  /* slate-500 */
+    --cor-texto-claro:     #F8FAFC;
+    --cor-texto-claro-2:   #94A3B8;
 
     /* Superfícies */
-    --cor-fundo:           #FFFFFF;
-    --cor-fundo-sutil:     #F3F5F7;  /* gray-blue de breadcrumb */
-    --cor-fundo-card:      #E7F1F4;  /* azul muito claro */
+    --cor-fundo:           #F8FAFC;
+    --cor-fundo-card:      #FFFFFF;
+    --cor-fundo-sutil:     #F1F5F9;
 
     /* Bordas */
-    --cor-borda:           #D4DCE0;
-    --cor-borda-hover:     #9BA8B5;
+    --cor-borda:           #E2E8F0;
+    --cor-borda-hover:     #CBD5E1;
 
     /* Raios */
-    --raio-sm: 6px;
-    --raio-md: 10px;
-    --raio-lg: 14px;
+    --raio-sm: 8px;
+    --raio-md: 14px;
+    --raio-lg: 20px;
+    --raio-pill: 99px;
+
+    /* Sombras */
+    --sombra-card:    0 1px 3px rgba(0,0,0,0.04);
+    --sombra-hover:   0 20px 48px rgba(0,0,0,0.10);
+    --sombra-btn:     0 8px 24px rgba(99,102,241,0.35);
+    --sombra-icon:    0 6px 16px rgba(139,92,246,0.30);
 }
 
 /* ---------- Fonte ---------- */
@@ -50,34 +68,46 @@ header    { visibility: hidden; }
     max-width: 760px;
 }
 
-/* Tipografia: aplica em elementos semânticos.
-   Não tocamos em span/div para não quebrar fontes de ícones. */
+/* Tipografia */
 h1, h2, h3, h4, h5, h6, p, label {
     font-family: 'Inter', sans-serif !important;
     color: var(--cor-texto);
 }
 
 /* ============================================================
-   NAVBAR — barra superior estilo Omie
+   NAVBAR — hero dark gradient (estilo Portal Sillion)
    ============================================================ */
 .app-navbar {
-    /* Estoura o block-container para ocupar a largura total da viewport */
     margin-left: calc(50% - 50vw);
     margin-right: calc(50% - 50vw);
-    background: var(--cor-primaria);
+    background: linear-gradient(135deg, var(--hero-bg-1) 0%, var(--hero-bg-2) 50%, var(--hero-bg-3) 100%);
     padding: 18px max(32px, calc(50vw - 360px));
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 0;
+    position: relative;
+    overflow: hidden;
+    border-bottom: 1px solid rgba(99,102,241,0.18);
 }
+.app-navbar::before {
+    content: '';
+    position: absolute;
+    top: -120px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 700px;
+    height: 300px;
+    background: radial-gradient(ellipse, var(--hero-glow) 0%, transparent 70%);
+    pointer-events: none;
+}
+.app-navbar > * { position: relative; z-index: 1; }
+
 .app-navbar .brand-link {
     display: inline-flex;
     align-items: center;
     text-decoration: none;
 }
-/* Logo SVG: a versão original é preta, então invertemos via filtro
-   para que apareça branca sobre o fundo navy escuro da navbar. */
 .app-navbar .brand-logo {
     height: 28px;
     width: auto;
@@ -88,7 +118,6 @@ h1, h2, h3, h4, h5, h6, p, label {
 .app-navbar .brand-link:hover .brand-logo {
     opacity: 0.85;
 }
-/* Fallback: caso o logo não carregue, mantemos o nome textual */
 .app-navbar .brand-name {
     font-family: 'Inter', sans-serif;
     font-size: 22px;
@@ -116,21 +145,22 @@ h1, h2, h3, h4, h5, h6, p, label {
 }
 
 /* ============================================================
-   BREADCRUMB (barra clara abaixo da navbar)
+   BREADCRUMB (logo abaixo da navbar)
    ============================================================ */
 .app-breadcrumb {
     margin-left: calc(50% - 50vw);
     margin-right: calc(50% - 50vw);
-    background: var(--cor-fundo-sutil);
+    background: var(--cor-fundo-card);
     padding: 14px max(32px, calc(50vw - 360px));
     border-bottom: 1px solid var(--cor-borda);
     font-size: 13px;
     color: var(--cor-texto-muted);
-    margin-bottom: 40px;
+    margin-bottom: 48px;
 }
 .app-breadcrumb a {
     color: var(--cor-link);
     text-decoration: none;
+    font-weight: 500;
 }
 .app-breadcrumb a:hover {
     text-decoration: underline;
@@ -141,28 +171,54 @@ h1, h2, h3, h4, h5, h6, p, label {
 }
 
 /* ============================================================
-   HERO (título + subtítulo)
+   HERO (título + subtítulo + badge)
    ============================================================ */
 .hero {
-    margin-bottom: 36px;
+    margin-bottom: 40px;
+    text-align: left;
+}
+.hero-eyebrow {
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--cor-acento-hover);
+    background: rgba(139,92,246,0.10);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border-radius: var(--raio-pill);
+    margin-bottom: 14px;
 }
 .page-title {
     font-family: 'Inter', sans-serif;
-    font-size: 36px;
-    font-weight: 700;
+    font-size: 38px;
+    font-weight: 800;
     color: var(--cor-texto);
-    letter-spacing: -0.02em;
-    line-height: 1.15;
-    margin: 0 0 10px;
+    letter-spacing: -0.8px;
+    line-height: 1.1;
+    margin: 0 0 12px;
+}
+.page-title span {
+    background: linear-gradient(90deg, var(--cor-primaria), var(--cor-acento));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 .page-subtitle {
     font-family: 'Inter', sans-serif;
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 400;
     color: var(--cor-texto-muted);
-    line-height: 1.55;
+    line-height: 1.7;
     margin: 0;
     max-width: 540px;
+}
+
+/* ============================================================
+   CARTÃO (container do formulário)
+   ============================================================ */
+.block-container > div[data-testid="stVerticalBlock"] {
+    gap: 1rem;
 }
 
 /* ============================================================
@@ -174,7 +230,7 @@ h1, h2, h3, h4, h5, h6, p, label {
     padding: 12px 14px;
     font-size: 15px;
     font-family: 'Inter', sans-serif !important;
-    background: var(--cor-fundo);
+    background: var(--cor-fundo-card);
     transition: all 0.15s ease;
     color: var(--cor-texto);
 }
@@ -182,14 +238,14 @@ h1, h2, h3, h4, h5, h6, p, label {
     border-color: var(--cor-borda-hover);
 }
 .stTextInput > div > div > input:focus {
-    border-color: var(--cor-acento);
-    box-shadow: 0 0 0 3px rgba(79, 183, 184, 0.18);
+    border-color: var(--cor-primaria);
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.18);
     outline: none;
 }
 .stTextInput label,
 .stFileUploader label,
 .stSelectbox label {
-    font-weight: 500 !important;
+    font-weight: 600 !important;
     font-size: 14px !important;
     color: var(--cor-texto) !important;
     margin-bottom: 6px !important;
@@ -197,7 +253,6 @@ h1, h2, h3, h4, h5, h6, p, label {
 
 /* ============================================================
    SELECTBOX (Tipo de faturamento)
-   Mesma identidade visual do text input
    ============================================================ */
 .stSelectbox > div[data-baseweb="select"] > div {
     border-radius: var(--raio-md) !important;
@@ -205,7 +260,7 @@ h1, h2, h3, h4, h5, h6, p, label {
     padding: 6px 10px !important;
     font-size: 15px !important;
     font-family: 'Inter', sans-serif !important;
-    background: var(--cor-fundo) !important;
+    background: var(--cor-fundo-card) !important;
     transition: all 0.15s ease !important;
     min-height: 46px !important;
 }
@@ -213,10 +268,9 @@ h1, h2, h3, h4, h5, h6, p, label {
     border-color: var(--cor-borda-hover) !important;
 }
 .stSelectbox > div[data-baseweb="select"]:focus-within > div {
-    border-color: var(--cor-acento) !important;
-    box-shadow: 0 0 0 3px rgba(79, 183, 184, 0.18) !important;
+    border-color: var(--cor-primaria) !important;
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.18) !important;
 }
-/* Itens do dropdown aberto */
 ul[role="listbox"] {
     border-radius: var(--raio-md) !important;
     border: 1px solid var(--cor-borda) !important;
@@ -228,49 +282,48 @@ ul[role="listbox"] li {
 }
 ul[role="listbox"] li:hover,
 ul[role="listbox"] li[aria-selected="true"] {
-    background: var(--cor-fundo-card) !important;
-    color: var(--cor-primaria) !important;
+    background: rgba(99,102,241,0.08) !important;
+    color: var(--cor-primaria-hover) !important;
 }
 
 /* ============================================================
-   FILE UPLOADER — abordagem minimalista
-   Estilizamos só a área externa e o botão; deixamos o resto
-   herdar do Streamlit pra não quebrar o layout interno.
+   FILE UPLOADER
    ============================================================ */
 [data-testid="stFileUploader"] section {
     border-radius: var(--raio-md);
     border: 1.5px dashed var(--cor-borda);
-    background: var(--cor-fundo-sutil);
-    padding: 18px 22px;
-    transition: all 0.15s ease;
+    background: var(--cor-fundo-card);
+    padding: 22px 22px;
+    transition: all 0.2s ease;
 }
 [data-testid="stFileUploader"] section:hover {
     border-color: var(--cor-acento);
-    background: var(--cor-fundo);
+    background: var(--cor-fundo-card);
+    box-shadow: 0 0 0 4px rgba(139,92,246,0.06);
 }
 
-/* Ícone de upload padrão do Streamlit (svg/icon na esquerda) */
 [data-testid="stFileUploader"] section svg {
     color: var(--cor-texto-muted);
     fill: var(--cor-texto-muted);
 }
 
-/* Botão "Browse files" — navy escuro com texto branco */
+/* Botão "Browse files" — gradient indigo→purple */
 [data-testid="stFileUploader"] button {
-    background: var(--cor-primaria) !important;
+    background: linear-gradient(135deg, var(--cor-primaria), var(--cor-acento)) !important;
     color: #FFFFFF !important;
-    border: 1px solid var(--cor-primaria) !important;
+    border: none !important;
     border-radius: var(--raio-sm) !important;
-    padding: 6px 18px !important;
-    font-weight: 500 !important;
+    padding: 8px 18px !important;
+    font-weight: 600 !important;
     font-size: 14px !important;
-    transition: background 0.15s ease !important;
+    transition: all 0.15s ease !important;
+    box-shadow: 0 4px 12px rgba(99,102,241,0.25) !important;
 }
 [data-testid="stFileUploader"] button:hover {
-    background: var(--cor-primaria-hover) !important;
-    border-color: var(--cor-primaria-hover) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 18px rgba(99,102,241,0.35) !important;
+    opacity: 0.95 !important;
 }
-/* Garante visibilidade do texto interno do botão */
 [data-testid="stFileUploader"] button p,
 [data-testid="stFileUploader"] button span:not([data-testid*="Icon"]):not([class*="material"]) {
     color: #FFFFFF !important;
@@ -278,13 +331,13 @@ ul[role="listbox"] li[aria-selected="true"] {
 }
 
 /* ============================================================
-   BOTÃO PRIMÁRIO — máxima especificidade
+   BOTÃO PRIMÁRIO — gradient indigo→purple
    ============================================================ */
 html body .stButton > button[kind="primary"],
 html body .stButton > button[kind="primaryFormSubmit"],
 html body button[data-testid="stBaseButton-primary"],
 html body button[data-testid="baseButton-primary"] {
-    background: var(--cor-primaria) !important;
+    background: linear-gradient(135deg, var(--cor-primaria), var(--cor-acento)) !important;
     background-color: var(--cor-primaria) !important;
     color: #FFFFFF !important;
     border: none !important;
@@ -293,22 +346,21 @@ html body button[data-testid="baseButton-primary"] {
     font-weight: 600 !important;
     font-size: 15px !important;
     font-family: 'Inter', sans-serif !important;
-    transition: all 0.15s ease !important;
+    transition: all 0.2s ease !important;
     letter-spacing: -0.01em !important;
+    box-shadow: var(--sombra-btn) !important;
 }
 html body .stButton > button[kind="primary"]:hover,
 html body button[data-testid="stBaseButton-primary"]:hover {
-    background: var(--cor-primaria-hover) !important;
-    background-color: var(--cor-primaria-hover) !important;
-    transform: translateY(-1px);
+    transform: translateY(-2px) !important;
+    box-shadow: 0 12px 32px rgba(99,102,241,0.45) !important;
+    opacity: 0.95 !important;
 }
 html body .stButton > button[kind="primary"]:active,
 html body button[data-testid="stBaseButton-primary"]:active {
-    transform: translateY(0);
+    transform: translateY(0) !important;
 }
 
-/* Força texto branco em TODOS os descendentes (cobre <p>, <div>,
-   <span> e até <font> que o Google Translate possa injetar) */
 html body .stButton > button[kind="primary"] *,
 html body button[data-testid="stBaseButton-primary"] *,
 html body button[data-testid="baseButton-primary"] * {
@@ -317,28 +369,27 @@ html body button[data-testid="baseButton-primary"] * {
 }
 
 /* ============================================================
-   BOTÃO SECUNDÁRIO (ex: OK do dialog)
+   BOTÃO SECUNDÁRIO (OK do dialog)
    ============================================================ */
 html body .stButton > button[kind="secondary"],
 html body button[data-testid="stBaseButton-secondary"],
 html body button[data-testid="baseButton-secondary"] {
-    background: var(--cor-primaria) !important;
+    background: linear-gradient(135deg, var(--cor-primaria), var(--cor-acento)) !important;
     background-color: var(--cor-primaria) !important;
     color: #FFFFFF !important;
-    border: 1px solid var(--cor-primaria) !important;
+    border: none !important;
     border-radius: var(--raio-md) !important;
     padding: 12px 24px !important;
     font-weight: 600 !important;
     font-size: 15px !important;
     font-family: 'Inter', sans-serif !important;
-    transition: all 0.15s ease !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 6px 18px rgba(99,102,241,0.30) !important;
 }
 html body .stButton > button[kind="secondary"]:hover,
 html body button[data-testid="stBaseButton-secondary"]:hover {
-    background: var(--cor-primaria-hover) !important;
-    background-color: var(--cor-primaria-hover) !important;
-    border-color: var(--cor-primaria-hover) !important;
-    transform: translateY(-1px);
+    transform: translateY(-2px) !important;
+    opacity: 0.95 !important;
 }
 html body .stButton > button[kind="secondary"] *,
 html body button[data-testid="stBaseButton-secondary"] *,
@@ -348,7 +399,7 @@ html body button[data-testid="baseButton-secondary"] * {
 }
 
 /* ============================================================
-   ÍCONE DE AJUDA (tooltip) — reseta background herdado
+   ÍCONE DE AJUDA (tooltip)
    ============================================================ */
 html body button[aria-label^="Help for"],
 html body button[aria-label^="Ajuda para"],
@@ -359,7 +410,8 @@ html body [data-testid="stTooltipIcon"] button {
     border: none !important;
     padding: 0 !important;
     min-height: auto !important;
-    color: var(--cor-texto-secundario, #5A7A84) !important;
+    color: var(--cor-texto-muted) !important;
+    box-shadow: none !important;
 }
 html body button[aria-label^="Help for"] *,
 html body button[aria-label^="Ajuda para"] *,
@@ -373,24 +425,31 @@ html body [data-testid="stTooltipIcon"] button * {
    ============================================================ */
 .file-preview {
     background: var(--cor-fundo-card);
-    border: 1px solid #C5D9DF;
+    border: 1px solid var(--cor-borda);
     border-radius: var(--raio-md);
-    padding: 12px 14px;
-    margin-top: 10px;
+    padding: 14px 16px;
+    margin-top: 12px;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
+    box-shadow: var(--sombra-card);
+    transition: all 0.2s ease;
+}
+.file-preview:hover {
+    border-color: var(--cor-borda-hover);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.06);
 }
 .file-preview-icon {
-    width: 30px;
-    height: 30px;
-    border-radius: 7px;
-    background: var(--cor-primaria);
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--cor-primaria), var(--cor-acento));
     color: #FFFFFF;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(99,102,241,0.30);
 }
 .file-preview-icon svg {
     display: block;
@@ -418,26 +477,28 @@ html body [data-testid="stTooltipIcon"] button * {
 }
 
 /* ============================================================
-   FOOTER
+   FOOTER (gradient escuro estilo hero)
    ============================================================ */
 .app-footer {
     margin-left: calc(50% - 50vw);
     margin-right: calc(50% - 50vw);
-    background: var(--cor-primaria);
-    padding: 24px max(32px, calc(50vw - 360px));
-    margin-top: 64px;
-    color: rgba(255, 255, 255, 0.7);
+    background: linear-gradient(135deg, var(--hero-bg-1) 0%, var(--hero-bg-2) 50%, var(--hero-bg-3) 100%);
+    padding: 28px max(32px, calc(50vw - 360px));
+    margin-top: 72px;
+    color: var(--cor-texto-claro-2);
     font-family: 'Inter', sans-serif;
     font-size: 13px;
     text-align: center;
+    border-top: 1px solid rgba(99,102,241,0.18);
 }
 .app-footer a {
-    color: var(--cor-acento);
+    color: var(--hero-badge-text);
     text-decoration: none;
     font-weight: 500;
 }
 .app-footer a:hover {
     text-decoration: underline;
+    color: #C7D2FE;
 }
 
 /* ============================================================
@@ -446,4 +507,12 @@ html body [data-testid="stTooltipIcon"] button * {
 div[data-testid="stDialog"] > div {
     border-radius: var(--raio-lg) !important;
     border: 1px solid var(--cor-borda) !important;
+    box-shadow: var(--sombra-hover) !important;
+}
+
+/* ============================================================
+   SPINNER (loading)
+   ============================================================ */
+.stSpinner > div {
+    border-top-color: var(--cor-primaria) !important;
 }
