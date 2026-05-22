@@ -1,6 +1,6 @@
-# Sillion · Download de NFSe / XML / Boleto
+# Sillion · Envio de faturamento
 
-Front-end em **Streamlit** para solicitar **download de NFSe, XML e Boleto** ao backend de processamento em **N8N**. O usuário informa email corporativo, CNPJ do cliente e a empresa de origem (Sitrack ou Sillion); opcionalmente pode anexar um arquivo de faturamento. A solicitação é transmitida em um POST JSON e o resultado retorna por email.
+Front-end em **Streamlit** para envio de arquivos de faturamento (xlsx / xlsb / csv) ao backend de processamento em **N8N**. O usuário informa email corporativo, escolhe a empresa de origem (Sitrack ou Sillion), seleciona o arquivo e o tipo de faturamento (TOT / VALE). O arquivo é codificado em **Base64** e transmitido em um POST JSON. Após o processamento, o relatório final é enviado por email ao usuário.
 
 > Projeto interno da Sillion. Acesso restrito ao domínio `@sillion.com.br`.
 
@@ -45,15 +45,14 @@ A Sillion possui um backend de processamento de faturamento construído no N8N. 
 ```
 
 1. Colaborador acessa o app.
-2. Informa: **email corporativo**, **CNPJ do cliente** (normalizado automaticamente para `XX.XXX.XXX/YYYY-ZZ`), **empresa** (Sitrack ou Sillion) e, se desejar, anexa um arquivo de faturamento com o respectivo tipo (TOT/VALE).
+2. Informa email corporativo, escolhe a **empresa** (Sitrack ou Sillion), seleciona o arquivo de faturamento e o tipo (TOT ou VALE).
 3. Ao clicar em **Enviar arquivo**:
    - Email é validado contra o domínio `@sillion.com.br`.
-   - CNPJ é normalizado e validado (precisa ter 14 dígitos).
    - Empresa precisa estar selecionada.
-   - Se houver arquivo, ele é lido em bytes e convertido para Base64.
+   - Arquivo é lido em bytes e convertido para Base64.
    - Streamlit faz um `POST` JSON ao webhook do N8N.
-4. Pop-up confirma que o resultado retornará por email.
-5. O N8N processa a solicitação e envia o resultado ao email informado.
+4. Pop-up confirma que o relatório retornará por email.
+5. O N8N processa o arquivo e envia o relatório final ao email informado.
 
 ---
 
@@ -230,7 +229,6 @@ O Streamlit envia um `POST` JSON com o seguinte formato:
 ```json
 {
   "email": "willian.silva@sillion.com.br",
-  "cnpj": "12.345.678/0001-95",
   "empresa_select": "Sitrack",
   "filename": "faturamento_mai_2026.xlsx",
   "file_base64": "UEsDBBQABgAIAAAAIQ...",
@@ -239,22 +237,20 @@ O Streamlit envia um `POST` JSON com o seguinte formato:
 }
 ```
 
-| Campo              | Tipo   | Obrigatório | Descrição                                                                          |
-|--------------------|--------|-------------|-------------------------------------------------------------------------------------|
-| `email`            | string | sim         | Email corporativo do remetente (já validado contra `@sillion.com.br`)               |
-| `cnpj`             | string | sim         | CNPJ do cliente, sempre normalizado para `XX.XXX.XXX/YYYY-ZZ`                       |
-| `empresa_select`   | string | sim         | Empresa de origem da solicitação — valores aceitos: `Sitrack` ou `Sillion`          |
-| `filename`         | string | quando há arquivo | Nome original do arquivo                                                       |
-| `file_base64`      | string | quando há arquivo | Conteúdo do arquivo codificado em Base64                                       |
-| `mime_type`        | string | quando há arquivo | Tipo MIME (útil para reconstruir o arquivo no N8N)                             |
-| `tipo_faturamento` | string | quando há arquivo | Esteira de processamento — valores aceitos: `TOT` ou `VALE`                    |
+| Campo              | Tipo   | Descrição                                                                          |
+|--------------------|--------|-------------------------------------------------------------------------------------|
+| `email`            | string | Email corporativo do remetente (já validado contra `@sillion.com.br`)               |
+| `empresa_select`   | string | Empresa de origem da solicitação — valores aceitos: `Sitrack` ou `Sillion`          |
+| `filename`         | string | Nome original do arquivo                                                            |
+| `file_base64`      | string | Conteúdo do arquivo codificado em Base64                                            |
+| `mime_type`        | string | Tipo MIME (útil para reconstruir o arquivo no N8N)                                  |
+| `tipo_faturamento` | string | Esteira de processamento — valores aceitos: `TOT` ou `VALE`                         |
 
 ### Como consumir no N8N
 
 No nó **Webhook** (POST), os campos ficam em `$json`:
 
 - `{{ $json.email }}`
-- `{{ $json.cnpj }}` (já formatado — usar como filtro/lookup no Omie)
 - `{{ $json.empresa_select }}` (útil para rotear a esteira correta com um nó **Switch**)
 - `{{ $json.filename }}`
 - `{{ $json.file_base64 }}`
@@ -380,7 +376,6 @@ Falta o arquivo `.streamlit/secrets.toml` (local) ou os Secrets no painel do Str
 - [ ] Aceitar múltiplos arquivos em um único envio.
 - [ ] Mostrar progresso real do processamento no N8N (polling do status).
 - [x] ~~Adicionar campo de "tipo de faturamento" (dropdown TOT/VALE) para o N8N rotear a esteira correta.~~ ✓ implementado
-- [x] ~~Adicionar campo "CNPJ do cliente" com normalização automática para `XX.XXX.XXX/YYYY-ZZ`.~~ ✓ implementado
 - [x] ~~Adicionar campo "Selecione a empresa" (Sitrack / Sillion) enviado como `empresa_select`.~~ ✓ implementado
 - [ ] Logar tentativas inválidas (anti-abuso, monitoramento).
 

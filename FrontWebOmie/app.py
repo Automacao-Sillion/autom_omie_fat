@@ -1,7 +1,7 @@
 """
-Download de NFSe / XML / Boleto — Front Streamlit (Sillion)
-Coleta email + CNPJ do cliente + empresa de origem (e opcionalmente um arquivo
-de faturamento) e encaminha para o backend N8N via POST JSON.
+Envio de faturamento — Front Streamlit (Sillion)
+Encaminha arquivo (xlsx/xlsb/csv) + email + empresa de origem para o backend
+N8N via POST JSON com base64.
 
 Arquitetura:
 - app.py        → lógica Python (config, envio, widgets de input)
@@ -49,7 +49,7 @@ def resolver_logo_url() -> str:
 # Config da página
 # ============================================================
 st.set_page_config(
-    page_title="Sillion · Download de NFSe / XML / Boleto",
+    page_title="Sillion · Envio de faturamento",
     page_icon="",
     layout="centered",
     initial_sidebar_state="collapsed",
@@ -69,11 +69,8 @@ TIPOS_ACEITOS = ["xlsx", "xlsb", "csv"]
 # Tipos de faturamento aceitos pelo backend (esteira de processamento N8N)
 TIPOS_FATURAMENTO = ["TOT", "VALE"]
 
-# Empresas que originam a solicitação (esteira de download no N8N)
+# Empresas que originam a solicitação (esteira de processamento no N8N)
 EMPRESAS = ["Sitrack", "Sillion"]
-
-# CNPJ é sempre normalizado para o formato XX.XXX.XXX/YYYY-ZZ antes do envio
-CNPJ_REGEX = re.compile(r"^\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}$")
 
 TIMEOUT_REQ = 120  # segundos
 
@@ -134,39 +131,6 @@ def email_valido(email: str) -> bool:
     return bool(EMAIL_REGEX.match(email.strip()))
 
 
-def _somente_digitos(s: str) -> str:
-    """Retorna apenas os dígitos da string (descarta . / - e demais caracteres)."""
-    return re.sub(r"\D", "", s or "")
-
-
-def formatar_cnpj(valor: str) -> str:
-    """
-    Normaliza o CNPJ para o padrão XX.XXX.XXX/YYYY-ZZ.
-    Se ainda não houver 14 dígitos, retorna a string original (deixa o
-    usuário continuar digitando sem perder o que foi digitado).
-    """
-    d = _somente_digitos(valor)[:14]
-    if len(d) != 14:
-        return valor
-    return f"{d[:2]}.{d[2:5]}.{d[5:8]}/{d[8:12]}-{d[12:]}"
-
-
-def cnpj_valido(cnpj: str) -> bool:
-    """Considera válido apenas se já estiver no formato XX.XXX.XXX/YYYY-ZZ."""
-    return bool(CNPJ_REGEX.match(cnpj.strip()))
-
-
-def _normalizar_cnpj_callback() -> None:
-    """
-    Callback do text_input do CNPJ. Dispara ao perder o foco e aplica a máscara
-    XX.XXX.XXX/YYYY-ZZ quando o usuário já tiver digitado os 14 dígitos.
-    """
-    chave = "cnpj_input"
-    if chave not in st.session_state:
-        return
-    st.session_state[chave] = formatar_cnpj(st.session_state[chave])
-
-
 def detectar_mime(filename: str) -> str:
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext in MIME_FALLBACK:
@@ -177,34 +141,23 @@ def detectar_mime(filename: str) -> str:
 
 def montar_payload(
     email: str,
-    cnpj: str,
     empresa_select: str,
     arquivo,
     tipo_faturamento: str,
 ) -> dict:
     """
     Monta o payload JSON enviado ao N8N.
-    `cnpj` é sempre normalizado para XX.XXX.XXX/YYYY-ZZ antes do envio.
     `empresa_select` é uma string com o valor escolhido ('Sitrack' ou 'Sillion').
     """
-    payload = {
+    conteudo = arquivo.getvalue()
+    return {
         "email": email.strip(),
-        "cnpj": formatar_cnpj(cnpj),
         "empresa_select": empresa_select,
+        "filename": arquivo.name,
+        "file_base64": base64.b64encode(conteudo).decode("utf-8"),
+        "mime_type": detectar_mime(arquivo.name),
+        "tipo_faturamento": tipo_faturamento,
     }
-
-    if arquivo is not None:
-        conteudo = arquivo.getvalue()
-        payload.update(
-            {
-                "filename": arquivo.name,
-                "file_base64": base64.b64encode(conteudo).decode("utf-8"),
-                "mime_type": detectar_mime(arquivo.name),
-                "tipo_faturamento": tipo_faturamento,
-            }
-        )
-
-    return payload
 
 
 def enviar_para_n8n(url: str, payload: dict) -> requests.Response:
@@ -222,9 +175,9 @@ def enviar_para_n8n(url: str, payload: dict) -> requests.Response:
 inject(render_template("header", logo_url=resolver_logo_url()))
 inject(render_template(
     "hero",
-    titulo="Download de NFSe / XML / Boleto",
-    subtitulo="Informe o CNPJ do cliente e a empresa para solicitar o download dos "
-              "documentos. O resultado será encaminhado para o seu email.",
+    titulo="Envio de faturamento",
+    subtitulo="Envie o arquivo de faturamento para processamento automático. "
+              "O relatório retornará no seu email.",
 ))
 
 
@@ -248,16 +201,6 @@ email = st.text_input(
     placeholder=f"usuario@{DOMINIO_PERMITIDO}",
     help=f"Apenas emails do domínio @{DOMINIO_PERMITIDO} são aceitos. "
          "O relatório processado será enviado para este endereço.",
-)
-
-cnpj = st.text_input(
-    "CNPJ do cliente",
-    key="cnpj_input",
-    placeholder="00.000.000/0000-00",
-    max_chars=18,
-    on_change=_normalizar_cnpj_callback,
-    help="Digite apenas os números — ao sair do campo o valor é normalizado "
-         "automaticamente para o formato XX.XXX.XXX/YYYY-ZZ.",
 )
 
 empresa_select = st.selectbox(
@@ -311,15 +254,6 @@ if enviar:
             "(ex: seu.nome@" + DOMINIO_PERMITIDO + ")."
         )
 
-    cnpj_normalizado = formatar_cnpj(cnpj)
-    if not cnpj.strip():
-        erros.append("Informe o CNPJ do cliente.")
-    elif not cnpj_valido(cnpj_normalizado):
-        erros.append(
-            "CNPJ inválido. Informe os 14 dígitos — ele será normalizado "
-            "para o formato XX.XXX.XXX/YYYY-ZZ."
-        )
-
     if not empresa_select:
         erros.append("Selecione a empresa.")
 
@@ -336,7 +270,6 @@ if enviar:
             try:
                 payload = montar_payload(
                     email=email,
-                    cnpj=cnpj_normalizado,
                     empresa_select=empresa_select,
                     arquivo=arquivo,
                     tipo_faturamento=tipo_faturamento,
