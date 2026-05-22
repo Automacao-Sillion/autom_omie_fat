@@ -244,7 +244,8 @@ h1, h2, h3, h4, h5, h6, p, label {
 }
 .stTextInput label,
 .stFileUploader label,
-.stSelectbox label {
+.stSelectbox label,
+.stRadio label {
     font-weight: 600 !important;
     font-size: 14px !important;
     color: var(--cor-texto) !important;
@@ -284,6 +285,34 @@ ul[role="listbox"] li:hover,
 ul[role="listbox"] li[aria-selected="true"] {
     background: rgba(99,102,241,0.08) !important;
     color: var(--cor-primaria-hover) !important;
+}
+
+/* ============================================================
+   RADIO (Selecione a empresa)
+   ============================================================ */
+.stRadio [role="radiogroup"] {
+    gap: 24px !important;
+    margin-top: 4px !important;
+}
+.stRadio [role="radiogroup"] label {
+    cursor: pointer !important;
+    font-size: 15px !important;
+    color: var(--cor-texto) !important;
+    font-weight: 500 !important;
+    margin-bottom: 0 !important;
+}
+.stRadio [role="radiogroup"] label > div:first-child {
+    border-color: var(--cor-borda) !important;
+    transition: all 0.15s ease !important;
+}
+.stRadio [role="radiogroup"] label:hover > div:first-child {
+    border-color: var(--cor-acento) !important;
+}
+/* Bolinha selecionada — preenchimento na cor navy */
+.stRadio [role="radiogroup"] input:checked + div,
+.stRadio [role="radiogroup"] label[data-checked="true"] > div:first-child {
+    background-color: var(--cor-primaria) !important;
+    border-color: var(--cor-primaria) !important;
 }
 
 /* ============================================================

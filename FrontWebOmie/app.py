@@ -203,11 +203,11 @@ email = st.text_input(
          "O relatório processado será enviado para este endereço.",
 )
 
-empresa_select = st.selectbox(
-    "Selecione a empresa",
+empresa_select = st.radio(
+    "Selecione a empresa:",
     options=EMPRESAS,
     index=None,
-    placeholder="Selecione a empresa...",
+    horizontal=True,
     help="Indica qual empresa originou a solicitação. O backend usa este valor "
          "para direcionar o processamento.",
 )
