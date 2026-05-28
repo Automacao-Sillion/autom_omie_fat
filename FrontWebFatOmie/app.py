@@ -30,6 +30,7 @@ STATIC_DIR = BASE_DIR / "static"
 # Recursos externos
 # ============================================================
 LOGO_EXTERNO = "https://www.sillion.com.br/wp-content/themes/sillion/images/logo-black-tm.svg"
+FAVICON_URL  = "https://www.sillion.com.br/wp-content/themes/sillion/images/logo-white-tm.svg"
 LOGO_LOCAL_FILE = STATIC_DIR / "logo-sillion.svg"
 
 
@@ -50,7 +51,7 @@ def resolver_logo_url() -> str:
 # ============================================================
 st.set_page_config(
     page_title="Sillion · Envio de faturamento",
-    page_icon=LOGO_EXTERNO,
+    page_icon=FAVICON_URL,
     layout="centered",
     initial_sidebar_state="collapsed",
 )
