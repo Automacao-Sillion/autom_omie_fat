@@ -50,7 +50,7 @@ def resolver_logo_url() -> str:
 # ============================================================
 st.set_page_config(
     page_title="Sillion · Envio de faturamento",
-    page_icon="",
+    page_icon=LOGO_EXTERNO,
     layout="centered",
     initial_sidebar_state="collapsed",
 )
