@@ -145,9 +145,43 @@ Crie o arquivo `.streamlit/secrets.toml` com a URL do seu webhook N8N:
 
 ```toml
 N8N_WEBHOOK_URL = "https://seu-n8n.app.n8n.cloud/webhook/<seu-id>"
+
+# Webhook de consulta de RFs (conferência do fluxo VALE)
+N8N_WEBHOOK_CONSULTA_RF_URL = "https://seu-n8n.app.n8n.cloud/webhook/<id-consulta>"
 ```
 
 > Este arquivo **não** é versionado (já está no `.gitignore`). Cada ambiente (local, staging, produção) tem o seu.
+
+### Conferência de RFs (fluxo VALE)
+
+Quando o usuário seleciona o tipo **VALE** após o upload, o front lê a coluna
+`RF` do arquivo (cabeçalho na linha 1) e consulta o webhook
+`N8N_WEBHOOK_CONSULTA_RF_URL` para saber quais RFs **já constam no banco de
+dados** (já foram enviados antes).
+
+**Contrato do webhook de consulta:**
+
+```jsonc
+// Request (POST)
+{ "tipo_faturamento": "VALE", "rfs": ["6203134747", "6203134749"] }
+
+// Response — RFs que JÁ existem no banco (lista vazia se nenhum)
+{ "existentes": [ { "rf": "6203134747", "linha": 123 } ] }
+```
+
+Comportamento no front:
+
+- **Sem repetidos** → mensagem de confirmação; o arquivo original é enviado
+  intacto e o backend cadastra os RFs novos no banco (fluxo N8N pós-envio).
+- **Com repetidos** → lista com rolagem mostrando RF, linha no arquivo e
+  registro no banco, com seleção em lote (Marcar/Desmarcar todos). As linhas
+  dos RFs **não** marcados para reenvio são removidas do arquivo antes do
+  envio; o payload JSON permanece exatamente no padrão atual (mesmos campos,
+  arquivo em Base64), sem impacto na esteira N8N.
+- Se a consulta falhar ou a chave não estiver configurada, o envio VALE fica
+  **bloqueado** (os fluxos TOT não são afetados).
+- Observação: arquivos `.xlsb` filtrados são reenviados como `.xlsx`
+  (o formato binário não permite gravação); `.xlsx` e `.csv` mantêm o formato.
 
 ### 5. (Opcional) Baixar logo localmente
 

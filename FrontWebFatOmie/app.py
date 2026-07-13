@@ -18,6 +18,8 @@ from pathlib import Path
 import requests
 import streamlit as st
 
+import conferencia_rf as crf
+
 # ============================================================
 # Caminhos
 # ============================================================
@@ -123,6 +125,12 @@ try:
     WEBHOOK_URL = st.secrets["N8N_WEBHOOK_URL"]
 except (KeyError, FileNotFoundError):
     WEBHOOK_URL = None
+
+# Webhook de CONSULTA de RFs já cadastrados (conferência do fluxo VALE).
+try:
+    WEBHOOK_CONSULTA_RF_URL = st.secrets["N8N_WEBHOOK_CONSULTA_RF_URL"]
+except (KeyError, FileNotFoundError):
+    WEBHOOK_CONSULTA_RF_URL = None
 
 
 # ============================================================
@@ -237,6 +245,128 @@ if arquivo is not None:
         help="Identifica em qual esteira o arquivo será processado pelo backend.",
     )
 
+# ============================================================
+# UI — Conferência de RFs (ativa apenas no fluxo VALE, após upload)
+# ============================================================
+# `linhas_remover` guarda as linhas do arquivo cujos RFs duplicados o usuário
+# optou por NÃO reenviar. O arquivo filtrado é gerado só na hora do envio,
+# mantendo o payload N8N idêntico ao padrão atual.
+linhas_remover = set()
+conferencia_ok = True  # quando False, o envio VALE fica bloqueado
+
+
+@st.cache_data(show_spinner=False, ttl=300)
+def _conferir_cached(nome: str, conteudo: bytes, tipo: str) -> dict:
+    return crf.conferir(nome, conteudo, WEBHOOK_CONSULTA_RF_URL, tipo)
+
+
+if arquivo is not None and tipo_faturamento == "VALE":
+    st.markdown("---")
+    st.subheader("Conferência de RFs")
+
+    if not WEBHOOK_CONSULTA_RF_URL:
+        conferencia_ok = False
+        st.error(
+            "⚠️ O webhook de consulta de RFs não foi configurado. "
+            "Adicione a chave `N8N_WEBHOOK_CONSULTA_RF_URL` em "
+            "`.streamlit/secrets.toml` (ou nos Secrets do Streamlit Cloud)."
+        )
+    else:
+        resultado = None
+        try:
+            with st.spinner("Consultando RFs já cadastrados no banco de dados..."):
+                resultado = _conferir_cached(arquivo.name, arquivo.getvalue(), "VALE")
+        except ValueError as exc:
+            conferencia_ok = False
+            st.error(f"Não foi possível conferir os RFs: {exc}")
+        except requests.exceptions.RequestException as exc:
+            conferencia_ok = False
+            st.error(
+                "Falha ao consultar o banco de RFs no N8N. "
+                "O envio VALE fica bloqueado até a conferência funcionar. "
+                f"Detalhe: {exc}"
+            )
+
+        if resultado is not None:
+            duplicados = resultado["duplicados"]
+            novos = resultado["novos"]
+
+            if not resultado["rfs"]:
+                conferencia_ok = False
+                st.error(
+                    'Nenhum RF encontrado no arquivo. Confirme se a coluna "RF" '
+                    "está preenchida (cabeçalho na linha 1)."
+                )
+            elif not duplicados:
+                st.success(
+                    f"Nenhum RF repetido: os **{len(novos)} RFs** do arquivo são novos. "
+                    "Eles serão cadastrados no banco de dados pelo backend após o envio."
+                )
+            else:
+                st.warning(
+                    f"**{len(duplicados)}** de **{len(resultado['rfs'])}** RFs do arquivo "
+                    "**já constam no banco de dados** (já foram enviados antes). "
+                    "Marque abaixo os que deseja reenviar mesmo assim."
+                )
+
+                # ---- Seleção em lote -------------------------------------
+                chave = f"dups_{arquivo.name}_{len(arquivo.getvalue())}"
+                if f"{chave}_v" not in st.session_state:
+                    st.session_state[f"{chave}_v"] = 0
+                    st.session_state[f"{chave}_def"] = False
+
+                col_a, col_b, _ = st.columns([1, 1, 2])
+                if col_a.button("Marcar todos", key=f"{chave}_all", use_container_width=True):
+                    st.session_state[f"{chave}_def"] = True
+                    st.session_state[f"{chave}_v"] += 1
+                if col_b.button("Desmarcar todos", key=f"{chave}_none", use_container_width=True):
+                    st.session_state[f"{chave}_def"] = False
+                    st.session_state[f"{chave}_v"] += 1
+
+                import pandas as pd
+
+                df_dups = pd.DataFrame(
+                    [
+                        {
+                            "Reenviar": st.session_state[f"{chave}_def"],
+                            "RF": d["rf"],
+                            "Linha no arquivo": d["linha"],
+                            "Registro no banco": str(d["ref_banco"]),
+                        }
+                        for d in duplicados
+                    ]
+                )
+                editado = st.data_editor(
+                    df_dups,
+                    height=min(320, 45 + 35 * len(df_dups)),  # lista com rolagem
+                    hide_index=True,
+                    use_container_width=True,
+                    key=f"{chave}_editor_{st.session_state[f'{chave}_v']}",
+                    column_config={
+                        "Reenviar": st.column_config.CheckboxColumn(
+                            "Reenviar", help="Marque para reenviar este RF mesmo já constando no banco."
+                        ),
+                    },
+                    disabled=["RF", "Linha no arquivo", "Registro no banco"],
+                )
+
+                nao_selecionados = editado[~editado["Reenviar"]]
+                linhas_remover = set(nao_selecionados["Linha no arquivo"].tolist())
+                qtd_reenvio = len(editado) - len(nao_selecionados)
+
+                if not novos and qtd_reenvio == 0:
+                    conferencia_ok = False
+                    st.info(
+                        "Todos os RFs do arquivo já constam no banco e nenhum foi "
+                        "marcado para reenvio — não há nada a enviar."
+                    )
+                else:
+                    st.caption(
+                        f"Serão enviados **{len(novos)} RFs novos** + "
+                        f"**{qtd_reenvio} reenvios** "
+                        f"({len(nao_selecionados)} linhas duplicadas serão removidas do arquivo)."
+                    )
+
 st.write("")
 enviar = st.button("Enviar arquivo", type="primary", use_container_width=True)
 
@@ -262,6 +392,11 @@ if enviar:
         erros.append("Selecione um arquivo para enviar.")
     elif not tipo_faturamento:
         erros.append("Selecione o tipo de faturamento.")
+    elif tipo_faturamento == "VALE" and not conferencia_ok:
+        erros.append(
+            "A conferência de RFs não foi concluída (ou não há RFs a enviar). "
+            "O envio VALE está bloqueado."
+        )
 
     if erros:
         for e in erros:
@@ -269,10 +404,19 @@ if enviar:
     else:
         with st.spinner("Enviando arquivo para processamento..."):
             try:
+                # No fluxo VALE, remove do arquivo as linhas dos RFs duplicados
+                # que o usuário optou por não reenviar. O formato do arquivo e
+                # o payload permanecem no padrão que o N8N já espera.
+                arquivo_envio = arquivo
+                if tipo_faturamento == "VALE" and linhas_remover:
+                    arquivo_envio = crf.gerar_arquivo_filtrado(
+                        arquivo.name, arquivo.getvalue(), linhas_remover
+                    )
+
                 payload = montar_payload(
                     email=email,
                     empresa_select=empresa_select,
-                    arquivo=arquivo,
+                    arquivo=arquivo_envio,
                     tipo_faturamento=tipo_faturamento,
                 )
                 resp = enviar_para_n8n(WEBHOOK_URL, payload)

@@ -1,0 +1,193 @@
+{
+  "name": "VALE - Consulta RFs (conferencia front)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "consulta-rf",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wf1-webhook",
+      "name": "Webhook Consulta RF",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================= CONFIG (ajuste para a sua tabela real) =================\nconst TABELA   = 'rfs_faturados';      // nome da tabela do banco de RFs\nconst COL_RF   = 'rf';                 // coluna que guarda o numero do RF (PRIMARY KEY)\nconst COL_REF  = 'rf';                 // referencia exibida no front: o proprio RF\nconst COL_TIPO = '';                   // sem coluna de tipo nesta tabela\n// ==========================================================================\n\nconst body   = $json.body ?? $json;\nconst tipo   = String(body.tipo_faturamento ?? 'VALE').trim();\nconst brutos = Array.isArray(body.rfs) ? body.rfs : [];\n\n// Mesma normalizacao do front (conferencia_rf.normalizar_rf):\n// string, sem espacos nas pontas e sem sufixo '.0' de floats do Excel.\nconst normalizar = (v) => {\n  if (v === null || v === undefined) return '';\n  let t = String(v).trim();\n  if (/^\\d+\\.0$/.test(t)) t = t.slice(0, -2);\n  return t;\n};\n\nconst rfs = [...new Set(brutos.map(normalizar).filter(Boolean))];\n\nlet sql = '';\nif (rfs.length) {\n  const esc = (s) => String(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"''\");\n  const lista = rfs.map((r) => `'${esc(r)}'`).join(',');\n  sql = `SELECT ${COL_RF} AS rf, ${COL_REF} AS linha FROM ${TABELA} WHERE ${COL_RF} IN (${lista})`;\n  if (COL_TIPO) sql += ` AND ${COL_TIPO} = '${esc(tipo)}'`;\n}\n\nreturn [{ json: { tipo_faturamento: tipo, rfs, sql } }];"
+      },
+      "id": "wf1-normaliza",
+      "name": "Normalizar RFs e montar SQL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-tem-rfs",
+              "leftValue": "={{ $json.rfs.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "wf1-if",
+      "name": "Tem RFs?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}",
+        "options": {}
+      },
+      "id": "wf1-mysql",
+      "name": "Consultar banco",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        910,
+        200
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Converte o resultado do MySQL no formato que o front espera:\n// { \"existentes\": [ { \"rf\": \"...\", \"linha\": <referencia no banco> } ] }\nconst existentes = $input\n  .all()\n  .map((i) => i.json)\n  .filter((j) => j && j.rf !== undefined && j.rf !== null)\n  .map((j) => ({ rf: String(j.rf), linha: j.linha ?? '-' }));\n\nreturn [{ json: { existentes } }];"
+      },
+      "id": "wf1-formata",
+      "name": "Formatar resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {}
+      },
+      "id": "wf1-respond",
+      "name": "Responder existentes",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1350,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"existentes\": []\n}",
+        "options": {}
+      },
+      "id": "wf1-respond-vazio",
+      "name": "Responder vazio",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        910,
+        440
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Consulta RF": {
+      "main": [
+        [
+          {
+            "node": "Normalizar RFs e montar SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar RFs e montar SQL": {
+      "main": [
+        [
+          {
+            "node": "Tem RFs?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem RFs?": {
+      "main": [
+        [
+          {
+            "node": "Consultar banco",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder vazio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar banco": {
+      "main": [
+        [
+          {
+            "node": "Formatar resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar resposta": {
+      "main": [
+        [
+          {
+            "node": "Responder existentes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

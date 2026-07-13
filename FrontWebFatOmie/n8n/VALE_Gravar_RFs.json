@@ -1,0 +1,202 @@
+{
+  "name": "VALE - Gravar RFs pos-envio",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gravar-rf",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "wf2-webhook",
+      "name": "Webhook Gravar RFs",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Espera o payload do front (o mesmo da esteira, inalterado):\n// { email, empresa_select, filename, file_base64, mime_type, tipo_faturamento }\nconst body = $json.body ?? $json;\nif (!body.file_base64) {\n  throw new Error('file_base64 ausente no payload recebido.');\n}\nconst filename = body.filename || 'arquivo.xlsx';\nconst extensao = (filename.includes('.') ? filename.split('.').pop() : '').toLowerCase();\n\nreturn [{\n  json: {\n    filename,\n    extensao,\n    empresa: body.empresa_select ?? '',\n    tipo_faturamento: body.tipo_faturamento ?? 'VALE',\n  },\n  binary: {\n    data: {\n      data: body.file_base64,\n      mimeType: body.mime_type || 'application/octet-stream',\n      fileName: filename,\n    },\n  },\n}];"
+      },
+      "id": "wf2-binario",
+      "name": "Preparar binario",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-e-csv",
+              "leftValue": "={{ $json.extensao }}",
+              "rightValue": "csv",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "wf2-if",
+      "name": "E CSV?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "csv",
+        "options": {}
+      },
+      "id": "wf2-extract-csv",
+      "name": "Extrair CSV",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        910,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {}
+      },
+      "id": "wf2-extract-xlsx",
+      "name": "Extrair XLSX",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        910,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================= CONFIG (ajuste para a sua tabela real) =================\nconst TABELA = 'rfs_faturados';\nconst COL_RF = 'rf';               // coluna unica da tabela (PRIMARY KEY)\n// ==========================================================================\n// O rf e PRIMARY KEY, entao o INSERT IGNORE nunca duplica registros.\n\n// Mesma normalizacao do front (conferencia_rf.normalizar_rf)\nconst normalizar = (v) => {\n  if (v === null || v === undefined) return '';\n  let t = String(v).trim();\n  if (/^\\d+\\.0$/.test(t)) t = t.slice(0, -2);\n  return t;\n};\n\nconst rfs = new Set();\nfor (const item of $input.all()) {\n  const j = item.json ?? {};\n  const chave = Object.keys(j).find((k) => String(k).trim().toUpperCase() === 'RF');\n  if (!chave) continue;\n  const rf = normalizar(j[chave]);\n  if (rf) rfs.add(rf);\n}\n\nif (!rfs.size) {\n  throw new Error('Nenhum RF encontrado no arquivo (coluna \"RF\" ausente ou vazia).');\n}\n\nconst esc = (s) => String(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"''\");\nconst values = [...rfs].map((rf) => `('${esc(rf)}')`).join(',');\n\nconst sql = `INSERT IGNORE INTO ${TABELA} (${COL_RF}) VALUES ${values}`;\n\nreturn [{ json: { sql, total_rfs: rfs.size } }];"
+      },
+      "id": "wf2-insert",
+      "name": "Montar INSERT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}",
+        "options": {}
+      },
+      "id": "wf2-mysql",
+      "name": "Gravar no banco",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        1350,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Gravar RFs": {
+      "main": [
+        [
+          {
+            "node": "Preparar binario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar binario": {
+      "main": [
+        [
+          {
+            "node": "E CSV?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E CSV?": {
+      "main": [
+        [
+          {
+            "node": "Extrair CSV",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extrair XLSX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair CSV": {
+      "main": [
+        [
+          {
+            "node": "Montar INSERT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair XLSX": {
+      "main": [
+        [
+          {
+            "node": "Montar INSERT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar INSERT": {
+      "main": [
+        [
+          {
+            "node": "Gravar no banco",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
