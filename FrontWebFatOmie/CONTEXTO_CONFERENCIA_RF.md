@@ -33,7 +33,7 @@ Nova funcionalidade: **conferência de RFs duplicados**, ativa **somente quando 
 5. **Payload N8N inalterado** (não quebrar a esteira existente): `{email, empresa_select, filename, file_base64, mime_type, tipo_faturamento}`.
 6. Envio VALE fica **bloqueado** se: consulta falhar, chave não configurada, coluna RF ausente/vazia, ou tudo duplicado sem nada marcado.
 7. TOT não é afetado em nada.
-8. Consulta cacheada por 5 min (`st.cache_data`, chave = nome+conteúdo do arquivo).
+8. Consulta **sem cache** (14/07/2026): sempre ao vivo, a cada rerun do Streamlit. O cache de 5 min original causava resultado defasado ao reenviar o mesmo arquivo logo após um envio (RFs recém-gravados não apareciam como duplicados) e foi removido a pedido do Willian — prioridade é ser dinâmico.
 
 ### Decisões tomadas com o usuário
 

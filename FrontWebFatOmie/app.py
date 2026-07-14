@@ -255,11 +255,6 @@ linhas_remover = set()
 conferencia_ok = True  # quando False, o envio VALE fica bloqueado
 
 
-@st.cache_data(show_spinner=False, ttl=300)
-def _conferir_cached(nome: str, conteudo: bytes, tipo: str) -> dict:
-    return crf.conferir(nome, conteudo, WEBHOOK_CONSULTA_RF_URL, tipo)
-
-
 if arquivo is not None and tipo_faturamento == "VALE":
     st.markdown("---")
     st.subheader("Conferência de RFs")
@@ -275,7 +270,9 @@ if arquivo is not None and tipo_faturamento == "VALE":
         resultado = None
         try:
             with st.spinner("Consultando RFs já cadastrados no banco de dados..."):
-                resultado = _conferir_cached(arquivo.name, arquivo.getvalue(), "VALE")
+                resultado = crf.conferir(
+                    arquivo.name, arquivo.getvalue(), WEBHOOK_CONSULTA_RF_URL, "VALE"
+                )
         except ValueError as exc:
             conferencia_ok = False
             st.error(f"Não foi possível conferir os RFs: {exc}")
