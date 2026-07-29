@@ -1,0 +1,41 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ===== Streamlit / segredos =====
+**/.streamlit/secrets.toml
+*.env
+.env
+
+# ===== Credenciais / chaves (nunca commitar) =====
+*chave*.txt
+*secret*.txt
+*client_secret*
+*.pem
+*.pfx
+*.p12
+id_rsa*
+id_ed25519*
+
+# ===== Dados reais de faturamento (nao versionar) =====
+*.xlsx
+*.xlsb
+*.csv
+*.pdf
+!requirements.txt
+
+# ===== IDE =====
+.vscode/
+.idea/
+*.swp
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+desktop.ini
