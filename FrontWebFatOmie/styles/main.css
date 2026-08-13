@@ -545,3 +545,156 @@ div[data-testid="stDialog"] > div {
 .stSpinner > div {
     border-top-color: var(--cor-primaria) !important;
 }
+
+/* ============================================================
+   CONFERÊNCIA DE RFs — visão de 3 baldes (11/08/2026)
+
+   Cores por TOKEN do tema Sillion (`sillion-tema.css`, as mesmas 6 telas do
+   CRUD "Faturamento BD"), com fallback para a paleta atual deste app:
+
+       var(--sl-danger-soft2, #FEF2F2)
+           ^ token do tema      ^ o que já era usado aqui
+
+   Por que assim: este app (faturar) ainda NÃO carrega o sillion-tema.css --
+   ele está no índigo/roxo antigo e sem modo escuro. Com o fallback, hoje o
+   visual é idêntico ao que já estava; no dia em que o tema entrar, estes
+   blocos passam a seguir o vermelho #B41B25 e o html.dark sozinhos, sem
+   ninguém precisar voltar aqui.
+   ============================================================ */
+
+/* --- faixa de resumo: novos / bloqueados / já enviados --- */
+.rf-resumo {
+    display: flex;
+    gap: 12px;
+    margin: 4px 0 18px;
+    flex-wrap: wrap;
+}
+.rf-card {
+    flex: 1 1 150px;
+    background: var(--sl-surface, var(--cor-fundo-card));
+    border: 1px solid var(--sl-border, var(--cor-borda));
+    border-radius: var(--raio-md, 14px);
+    padding: 14px 16px;
+    box-shadow: var(--sombra-card, 0 1px 3px rgba(0,0,0,0.04));
+    border-left: 4px solid var(--sl-border2, var(--cor-borda-hover));
+}
+.rf-card .rf-num {
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--sl-ink, var(--cor-texto));
+    letter-spacing: -0.5px;
+}
+.rf-card .rf-rot {
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    color: var(--sl-text3, var(--cor-texto-muted));
+    margin-top: 4px;
+}
+.rf-card.ok         { border-left-color: var(--sl-ok-ico, #10B981); }
+.rf-card.ok .rf-num { color: var(--sl-ok, #047857); }
+.rf-card.bloq       { border-left-color: var(--sl-danger, #DC2626);
+                      background: var(--sl-danger-soft2, #FEF2F2); }
+.rf-card.bloq .rf-num { color: var(--sl-danger2, #B91C1C); }
+.rf-card.aviso      { border-left-color: var(--sl-warn-ico, #F59E0B); }
+.rf-card.aviso .rf-num { color: var(--sl-warn-text, #B45309); }
+
+/* --- bloco dos bloqueados --- */
+.rf-bloco {
+    border: 1px solid var(--sl-danger-bd2, #FECACA);
+    background: var(--sl-danger-soft2, #FEF2F2);
+    border-radius: var(--raio-md, 14px);
+    padding: 16px 18px;
+    margin-bottom: 16px;
+}
+.rf-bloco h4 {
+    margin: 0 0 6px;
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--sl-danger-text, #991B1B);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.rf-bloco p.rf-exp {
+    margin: 0 0 12px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--sl-danger-text, #7F1D1D);
+}
+
+/* --- bloco dos aprovados: a contraparte do bloco de bloqueados --- */
+.rf-bloco.aprov {
+    border-color: var(--sl-ok-bd, #A7F3D0);
+    background: var(--sl-ok-soft2, #F0FDF4);
+}
+.rf-bloco.aprov h4,
+.rf-bloco.aprov p.rf-exp { color: var(--sl-ok-text, #065F46); }
+
+/* --- tabela somente leitura (não tem checkbox: não há o que escolher) --- */
+.rf-tab {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    background: var(--sl-surface, var(--cor-fundo-card));
+    border-radius: var(--raio-sm, 8px);
+    overflow: hidden;
+}
+.rf-tab thead th {
+    background: var(--sl-fill, var(--cor-fundo-sutil));
+    color: var(--sl-text3, var(--cor-texto-muted));
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    text-align: left;
+    padding: 9px 12px;
+    white-space: nowrap;
+}
+.rf-tab tbody td {
+    padding: 9px 12px;
+    border-top: 1px solid var(--sl-border, var(--cor-borda));
+    color: var(--sl-ink, var(--cor-texto));
+    vertical-align: middle;
+}
+.rf-tab tbody tr:hover { background: var(--sl-fill, var(--cor-fundo-sutil)); }
+.rf-tab .rf-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-weight: 600;
+}
+.rf-tab .rf-motivo { color: var(--sl-text3, var(--cor-texto-muted)); font-size: 12px; }
+
+/* --- selo de status da nota ---
+   FATURADA fica NEUTRA de propósito: se ela também fosse colorida, a
+   CANCELADA perderia destaque -- e é a cancelada que precisa saltar aos
+   olhos, porque é o caso que o usuário estranha ("por que isso barrou?"). */
+.rf-selo {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: var(--raio-pill, 99px);
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+}
+.rf-selo.faturada  { background: var(--sl-fill2, #EEF2F6);
+                     color: var(--sl-text2, #475569); }
+.rf-selo.cancelada { background: var(--sl-danger-soft, #FEE2E2);
+                     color: var(--sl-danger-text, #991B1B); }
+.rf-selo.subst     { background: var(--sl-warn-soft, #FEF3C7);
+                     color: var(--sl-warn-text2, #92400E); }
+.rf-selo.novo      { background: var(--sl-ok-soft, #D1FAE5);
+                     color: var(--sl-ok-text, #065F46); }
+.rf-selo.reenvio   { background: var(--sl-warn-soft, #FEF3C7);
+                     color: var(--sl-warn-text2, #92400E); }
+
+/* rolagem quando a lista é longa, sem esticar a página */
+.rf-scroll { max-height: 330px; overflow-y: auto; border-radius: var(--raio-sm, 8px); }
+
+/* tabela nunca estoura a largura no celular */
+@media (max-width: 640px) {
+    .rf-tab { font-size: 12px; }
+    .rf-tab thead th, .rf-tab tbody td { padding: 7px 8px; }
+}

@@ -1,0 +1,252 @@
+{
+  "name": "VALE_Sync_Status_RF_Nota",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trg",
+      "name": "Executar manualmente",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 6,
+              "triggerAtMinute": 35
+            },
+            {
+              "field": "days",
+              "triggerAtHour": 13,
+              "triggerAtMinute": 35
+            },
+            {
+              "field": "days",
+              "triggerAtHour": 19,
+              "triggerAtMinute": 35
+            }
+          ]
+        }
+      },
+      "id": "sch",
+      "name": "3x ao dia",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -640,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "k",
+              "name": "OMIE_APP_KEY",
+              "value": "COLE_A_APP_KEY_DA_SILLION",
+              "type": "string"
+            },
+            {
+              "id": "s",
+              "name": "OMIE_APP_SECRET",
+              "value": "COLE_O_APP_SECRET_DA_SILLION",
+              "type": "string"
+            },
+            {
+              "id": "d",
+              "name": "DRY_RUN",
+              "value": "false",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cfg",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -420,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================================\n// Le TODAS as NFS-e da Omie (paginado) e devolve o status de cada nota.\n// Mode: Run Once for All Items\n//\n// CUSTO DE API (medido em 10/08/2026): 40 chamadas para 3.919 notas.\n// A Omie LIMITA a pagina a ~100 registros mesmo pedindo 500 -- por isso 40\n// paginas e nao 8. Segue barato: 40 contra ~3.900.\n// NAO trocar por ObterNFSe: seria 1 chamada POR NOTA para o mesmo campo.\n// O cStatusNFSe JA VEM nesta listagem.\n//\n// UMA EMPRESA SO (Sillion): confirmado com o Willian em 10/08/2026 -- a\n// Sitrack NAO usa RF. RF e' controle da Vale, faturada pela Sillion. Logo\n// nao ha' por que varrer a conta Omie da Sitrack: nenhuma nota dela vai\n// aparecer em rf_nota. Se um dia a Vale for faturada pela Sitrack, basta\n// rodar este mesmo fluxo com a outra app_key.\n// =====================================================================\n\nconst cfg       = $input.first().json;\nconst appKey    = cfg.OMIE_APP_KEY;\nconst appSecret = cfg.OMIE_APP_SECRET;\nconst DRY_RUN   = String(cfg.DRY_RUN) === 'true';\n\nif (!appKey || !appSecret || String(appKey).indexOf('COLE_') === 0) {\n  throw new Error('Preencha OMIE_APP_KEY e OMIE_APP_SECRET no no Config.');\n}\n\nconst POR_PAGINA = 500;   // a Omie reduz para ~100; manter nao custa nada\nconst PAUSA_MS   = 300;   // mesma pausa do fluxo \"Popula tabela NF & boleto\"\n\n// RETOMADA: se a varredura morrer na pagina N, ponha N aqui e rode de novo.\n// Repetir as 40 chamadas desde a 1 e' exatamente o consumo redundante que a\n// Omie pune com 500. O que ja' foi lido nao precisa ser lido de novo.\nconst PAGINA_INICIAL = 1;\n\n// Quantas vezes insistir na MESMA pagina antes de desistir, e quanto esperar.\n// A espera crescente e' o que resolve \"consumo redundante\": nao e' insistencia\n// cega, e' dar tempo para a Omie liberar.\nconst MAX_TENTATIVAS  = 3;\nconst ESPERA_RETRY_MS = [5000, 15000, 30000];\n\n// A Omie devolve HTTP 500 com o MOTIVO no corpo (faultstring), mas o n8n\n// mostra so' \"Request failed with status code 500\" e errorDetails vazio.\n// Esta funcao cava o corpo nos varios lugares onde o n8n/axios o esconde.\nfunction motivoOmie(e) {\n  const candidatos = [\n    e && e.response && e.response.data,\n    e && e.response && e.response.body,\n    e && e.cause && e.cause.response && e.cause.response.data,\n    e && e.cause && e.cause.error,\n    e && e.error,\n    e && e.description,\n  ];\n  for (const c of candidatos) {\n    if (!c) continue;\n    let obj = c;\n    if (typeof obj === 'string') {\n      try { obj = JSON.parse(obj); } catch (_) { return obj.slice(0, 400); }\n    }\n    if (obj && (obj.faultstring || obj.faultcode)) {\n      return String(obj.faultcode || '') + ' ' + String(obj.faultstring || '');\n    }\n    try { return JSON.stringify(obj).slice(0, 400); } catch (_) { /* segue */ }\n  }\n  return e && e.message ? String(e.message) : 'sem detalhe no corpo';\n}\n\n// arrow no topo: preserva o `this` do Code node dentro das funcoes abaixo\nconst chamar = (opcoes) => this.helpers.httpRequest(opcoes);\n\nasync function pedirPagina(p) {\n  let ultimo = null;\n  for (let t = 0; t < MAX_TENTATIVAS; t++) {\n    try {\n      return await chamar({\n        method: 'POST',\n        url: 'https://app.omie.com.br/api/v1/servicos/nfse/',\n        headers: { 'Content-Type': 'application/json' },\n        body: {\n          call: 'ListarNFSEs',\n          app_key: appKey,\n          app_secret: appSecret,\n          param: [{ nPagina: p, nRegPorPagina: POR_PAGINA }],\n        },\n        json: true,\n      });\n    } catch (e) {\n      ultimo = e;\n      console.warn('pagina ' + p + ', tentativa ' + (t + 1) + '/' + MAX_TENTATIVAS\n        + ' falhou -> ' + motivoOmie(e));\n      if (t < MAX_TENTATIVAS - 1) {\n        await new Promise((s) => setTimeout(s, ESPERA_RETRY_MS[t]));\n      }\n    }\n  }\n  const err = new Error('A Omie recusou a pagina ' + p + ' em '\n    + MAX_TENTATIVAS + ' tentativas. MOTIVO DA OMIE: ' + motivoOmie(ultimo)\n    + ' | Se falar em consumo redundante, espere alguns minutos e rode de novo'\n    + ' com PAGINA_INICIAL = ' + p + ' no topo deste no.');\n  err.pagina = p;\n  throw err;\n}\n\nconst notas = [];\nconst vocabulario = {};\nlet chamadas = 0;\nlet pagina = PAGINA_INICIAL;\nlet totalPaginas = pagina;\nlet parcial = false;\nlet proxima_pagina = null;\nlet motivo_parada = null;\n\ndo {\n  let r;\n  try {\n    r = await pedirPagina(pagina);\n  } catch (e) {\n    // Nao joga fora o que ja' foi lido: reprocessar do zero e' consumo\n    // redundante. Devolve o parcial marcado, para o UPDATE aproveitar.\n    if (!notas.length) throw e;\n    parcial = true;\n    proxima_pagina = e.pagina || pagina;\n    motivo_parada = e.message;\n    console.warn('PARCIAL: parou na pagina ' + proxima_pagina + ' com '\n      + notas.length + ' nota(s) ja lida(s).');\n    break;\n  }\n\n  chamadas++;\n  totalPaginas = r.nTotPaginas || 1;\n  const lote = r.nfseEncontradas || [];\n\n  // IMPORTANTE: aqui NAO existe o filtro APENAS_EMITIDAS do fluxo diario.\n  // As canceladas sao justamente o que interessa bloquear -- e por causa\n  // desse filtro boa parte delas NUNCA entrou na tabela NF.\n  for (const nf of lote) {\n    const cab = nf && nf.Cabecalho ? nf.Cabecalho : {};\n    const nIdNf = Number(cab.nCodNF);\n    if (!Number.isFinite(nIdNf) || nIdNf <= 0) continue;\n\n    const bruto = String(cab.cStatusNFSe == null ? '' : cab.cStatusNFSe).trim();\n    const chave = bruto === '' ? '(vazio)' : bruto;\n    vocabulario[chave] = (vocabulario[chave] || 0) + 1;\n\n    notas.push({\n      nIdNf: nIdNf,\n      cNumNFSe: cab.nNumeroNFSe == null ? null : String(cab.nNumeroNFSe),\n      cStatusNFSe: bruto === '' ? null : bruto,\n      cDataEmissao: nf && nf.Emissao ? nf.Emissao.cDataEmissao : null,\n    });\n  }\n\n  console.log('pagina ' + pagina + '/' + totalPaginas + ' - acumulado ' + notas.length);\n\n  pagina++;\n  if (pagina <= totalPaginas) await new Promise((s) => setTimeout(s, PAUSA_MS));\n} while (pagina <= totalPaginas);\n\nconsole.log('Vocabulario de status: ' + JSON.stringify(vocabulario));\n\nreturn [{\n  json: {\n    DRY_RUN: DRY_RUN,\n    chamadas_api: chamadas,\n    pagina_inicial: PAGINA_INICIAL,\n    total_paginas: totalPaginas,\n    parcial: parcial,\n    proxima_pagina: proxima_pagina,\n    motivo_parada: motivo_parada,\n    total_validas: notas.length,\n    vocabulario: vocabulario,\n    notas: notas,\n  },\n}];\n"
+      },
+      "id": "lst",
+      "name": "Lista_Status_Omie",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -180,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.DRY_RUN }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "iff",
+      "name": "Dry_run?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        60,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================================\n// DRY RUN - nao toca no banco. Serve para 2 coisas:\n//  1) revelar quais codigos de cStatusNFSe a Omie realmente usa\n//     (a unica incognita que faltava para fechar o mapeamento);\n//  2) provar que a paginacao roda dentro do limite de chamadas.\n// =====================================================================\n\nconst d = $input.first().json;\n\n// Vocabulario CONFIRMADO na execucao de 10/08/2026 (3.919 notas, 40 chamadas):\n//   C =    63 notas -> cancelada\n//   F = 3.856 notas -> faturada\n// Nao existe codigo proprio para SUBSTITUIDA: na Omie a substituicao aparece\n// como cancelamento + nota nova. Detectar substituicao = mesmo RF em 2 notas\n// (dois registros em rf_nota com o mesmo rf).\nconst CONHECIDOS = { C: 'CANCELADA', F: 'FATURADA' };\n\nconst linhas = Object.entries(d.vocabulario || {})\n  .sort(function (a, b) { return b[1] - a[1]; })\n  .map(function (par) {\n    return {\n      codigo: par[0],\n      quantidade: par[1],\n      significado: CONHECIDOS[par[0]] || 'DESCONHECIDO -> mapear',\n    };\n  });\n\nconst desconhecidos = linhas.filter(function (l) {\n  return l.significado.indexOf('DESCONHECIDO') === 0;\n});\n\nreturn [{\n  json: {\n    modo: 'DRY_RUN - nada foi gravado no banco',\n    varredura: d.parcial\n      ? 'PARCIAL - parou na pagina ' + d.proxima_pagina + ' de ' + d.total_paginas\n        + '. Espere alguns minutos e rode de novo com PAGINA_INICIAL = '\n        + d.proxima_pagina + ' no no Lista_Status_Omie.'\n      : 'COMPLETA (' + d.total_paginas + ' pagina(s))',\n    motivo_parada: d.motivo_parada || null,\n    chamadas_api: d.chamadas_api,\n    notas_lidas: d.total_validas,\n    status_encontrados: linhas,\n    precisa_mapear: desconhecidos.map(function (l) { return l.codigo; }),\n    proximo_passo: desconhecidos.length\n      ? 'Codigo novo encontrado. Complete o MAPA no no Montar_UPDATEs antes de virar DRY_RUN = false.'\n      : 'Vocabulario conhecido. Pode virar DRY_RUN = false no no Config.',\n    nota_de_cobertura:\n      'notas_lidas > COUNT(*) da NF e ESPERADO: o fluxo diario descarta as canceladas '\n      + '(APENAS_EMITIDAS), entao parte delas nunca entrou na NF. A rf_nota guarda nIdNf '\n      + 'direto e nao depende da NF ter a linha.',\n  },\n}];\n"
+      },
+      "id": "res",
+      "name": "Resumo_DryRun",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================================\n// Monta os UPDATE em LOTE da tabela rf_nota.\n// Um UPDATE por lote de 500 notas (CASE ... WHEN), nao um UPDATE por linha.\n// Mode: Run Once for All Items\n// =====================================================================\n\n// ========================= CONFIG =========================\n// Tabela QUALIFICADA com o banco de proposito: a credencial MySQL do n8n\n// (\"MySQL faturamento\") pode ter outro schema como default, e ai um\n// \"rf_nota\" solto quebraria com \"table doesn't exist\". Conferido em\n// 10/08/2026: a tabela existe em kvm4_db, ao lado de NF e rfs_faturados.\nconst TABELA = 'kvm4_db.rf_nota';\nconst LOTE   = 500;\n\n// Codigo cru da Omie -> status de negocio.\n// CONFIRMADO no DRY_RUN de 10/08/2026: o vocabulario tem SO estes dois\n// codigos (C = 63 notas, F = 3.856 notas). Nao existe codigo de\n// SUBSTITUIDA -- a substituicao aparece como cancelamento + nota nova,\n// e se detecta pelo mesmo rf em duas linhas de rf_nota.\nconst MAPA = {\n  C: 'CANCELADA',\n  F: 'FATURADA',\n};\n\n// Codigo fora do MAPA cai aqui. Sob a regra do CFO os dois status\n// bloqueiam, entao o bloqueio continua correto -- mas o rotulo exibido\n// ficaria errado. Por isso qualquer codigo novo grita no log.\nconst PADRAO = 'FATURADA';\n// ==========================================================\n\nconst d = $input.first().json;\nconst notas = Array.isArray(d.notas) ? d.notas : [];\n\nif (!notas.length) {\n  throw new Error('Nenhuma nota lida da Omie - confira as credenciais no no Config.');\n}\n\nconst esc = function (s) {\n  return String(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"''\");\n};\n\n// Denuncia codigo fora do MAPA. Nao quebra o fluxo (o bloqueio segue certo),\n// mas nao passa calado: um codigo novo rotulado errado engana quem le a tela.\nconst naoMapeados = {};\nfor (const n of notas) {\n  if (n.cStatusNFSe != null && !MAPA[n.cStatusNFSe]) {\n    naoMapeados[n.cStatusNFSe] = (naoMapeados[n.cStatusNFSe] || 0) + 1;\n  }\n}\nif (Object.keys(naoMapeados).length) {\n  console.warn('CODIGO FORA DO MAPA, gravado como ' + PADRAO + ': ' + JSON.stringify(naoMapeados));\n}\n\nconst lotes = [];\n\nfor (let i = 0; i < notas.length; i += LOTE) {\n  const bloco = notas.slice(i, i + LOTE);\n\n  const ids = bloco\n    .map(function (n) { return Number(n.nIdNf); })\n    .filter(function (v) { return Number.isFinite(v) && v > 0; });\n\n  if (!ids.length) continue;\n\n  const caseCodigo = bloco.map(function (n) {\n    const v = n.cStatusNFSe == null ? 'NULL' : \"'\" + esc(n.cStatusNFSe) + \"'\";\n    return 'WHEN ' + Number(n.nIdNf) + ' THEN ' + v;\n  }).join(' ');\n\n  const caseNegocio = bloco.map(function (n) {\n    const st = MAPA[n.cStatusNFSe] || PADRAO;\n    return 'WHEN ' + Number(n.nIdNf) + \" THEN '\" + esc(st) + \"'\";\n  }).join(' ');\n\n  // Este fluxo SO atualiza linhas que JA EXISTEM na listinha (WHERE nIdNf IN).\n  // Nota sem RF vinculado nao e afetada e nenhuma linha nova e criada aqui:\n  // quem cria vinculo e a esteira VALE (ou o backfill), nunca este fluxo.\n  lotes.push({\n    json: {\n      sql:\n        'UPDATE ' + TABELA + ' SET ' +\n        'cStatusNFSe = CASE nIdNf ' + caseCodigo + ' END, ' +\n        'status_nota = CASE nIdNf ' + caseNegocio + ' END, ' +\n        'status_em = NOW() ' +\n        'WHERE nIdNf IN (' + ids.join(',') + ')',\n      lote: lotes.length + 1,\n      notas_no_lote: ids.length,\n    },\n  });\n}\n\nconsole.log(lotes.length + ' lote(s) de UPDATE montado(s) para ' + notas.length + ' nota(s).');\nreturn lotes;\n"
+      },
+      "id": "upd",
+      "name": "Montar_UPDATEs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}",
+        "options": {}
+      },
+      "id": "sql",
+      "name": "Gravar_Status",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        540,
+        120
+      ]
+    }
+  ],
+  "connections": {
+    "Executar manualmente": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3x ao dia": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Lista_Status_Omie",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lista_Status_Omie": {
+      "main": [
+        [
+          {
+            "node": "Dry_run?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dry_run?": {
+      "main": [
+        [
+          {
+            "node": "Resumo_DryRun",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Montar_UPDATEs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar_UPDATEs": {
+      "main": [
+        [
+          {
+            "node": "Gravar_Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {},
+  "tags": []
+}

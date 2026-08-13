@@ -25,6 +25,10 @@ import conferencia_rf as crf
 # ============================================================
 BASE_DIR = Path(__file__).parent
 CSS_PATH = BASE_DIR / "styles" / "main.css"
+# Tema Sillion: carregado DEPOIS do main.css e só redefine valores de
+# variáveis (paleta do portal + modo escuro). Some o arquivo = volta o
+# visual anterior, sem outra alteração.
+TEMA_PATH = BASE_DIR / "styles" / "tema-sillion.css"
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 
@@ -72,6 +76,15 @@ TIPOS_ACEITOS = ["xlsx", "xlsb", "csv"]
 # Tipos de faturamento aceitos pelo backend (esteira de processamento N8N)
 TIPOS_FATURAMENTO = ["TOT", "VALE"]
 
+# ------------------------------------------------------------------
+# TEMPORÁRIO (12/08/2026, pedido do Willian) — vigente até o término
+# da reforma: RF cujas notas estão TODAS canceladas pode ser reenviado
+# mediante marcação explícita (começa desmarcado). Nota FATURADA segue
+# bloqueando sempre; substituição (cancelada + faturada nova) também.
+# Ao fim da reforma, mude para False — o bloqueio duro volta sozinho.
+# ------------------------------------------------------------------
+PERMITIR_REENVIO_CANCELADA = True
+
 # Empresas que originam a solicitação (esteira de processamento no N8N)
 EMPRESAS = ["Sitrack", "Sillion"]
 
@@ -116,6 +129,8 @@ def carregar_css(caminho: Path) -> None:
 # Carrega meta tags + CSS antes de qualquer conteúdo
 inject(render_template("meta"))
 carregar_css(CSS_PATH)
+if TEMA_PATH.exists():          # ordem importa: o tema sobrescreve o main.css
+    carregar_css(TEMA_PATH)
 
 
 # ============================================================
@@ -195,7 +210,7 @@ inject(render_template(
 # ============================================================
 if not WEBHOOK_URL:
     st.error(
-        "⚠️ A URL do webhook N8N não foi configurada. "
+        "A URL do webhook N8N não foi configurada. "
         "Crie o arquivo `.streamlit/secrets.toml` com a chave `N8N_WEBHOOK_URL` "
         "ou configure-a no painel do Streamlit Community Cloud."
     )
@@ -246,11 +261,125 @@ if arquivo is not None:
     )
 
 # ============================================================
+# Helpers de exibição da conferência de RFs
+# ============================================================
+def _esc(valor) -> str:
+    """Escapa texto para ir dentro do HTML da tabela."""
+    return (
+        str("" if valor is None else valor)
+        .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def card_resumo(novos: int, bloqueados: int, legado: int, canceladas: int = 0) -> str:
+    """Faixa com os números, para o usuário entender a situação num relance."""
+    partes = [
+        f'<div class="rf-card ok"><div class="rf-num">{novos}</div>'
+        f'<div class="rf-rot">Novos</div></div>'
+    ]
+    if bloqueados:
+        partes.append(
+            f'<div class="rf-card bloq"><div class="rf-num">{bloqueados}</div>'
+            f'<div class="rf-rot">Bloqueados</div></div>'
+        )
+    if canceladas:
+        partes.append(
+            f'<div class="rf-card aviso"><div class="rf-num">{canceladas}</div>'
+            f'<div class="rf-rot">Canceladas · reenvio liberado</div></div>'
+        )
+    if legado:
+        partes.append(
+            f'<div class="rf-card aviso"><div class="rf-num">{legado}</div>'
+            f'<div class="rf-rot">Já enviados</div></div>'
+        )
+    return f'<div class="rf-resumo">{"".join(partes)}</div>'
+
+
+def selo_status(status: str, substituicao: bool) -> str:
+    """Selo colorido do status da nota. Cancelada tem destaque próprio."""
+    if substituicao:
+        return '<span class="rf-selo subst">SUBSTITUÍDA</span>'
+    if status == crf.STATUS_CANCELADA:
+        return '<span class="rf-selo cancelada">CANCELADA</span>'
+    return f'<span class="rf-selo faturada">{_esc(status or crf.STATUS_PADRAO)}</span>'
+
+
+def cabecalho_liberados(n_total: int, n_novos: int, n_reenviaveis: int) -> str:
+    """
+    Cabeçalho do bloco de liberados, com a MESMA moldura do bloco de
+    bloqueados (`.rf-bloco`).
+
+    A tabela é montada com uma st.columns por linha — não com st.data_editor.
+    Motivo: o data_editor desenha em canvas e não aceita HTML, então lá dentro
+    não existe pílula nem fonte monoespaçada. Com st.columns, o checkbox é
+    widget real do Streamlit e as outras células são HTML nosso, o que dá o
+    layout do bloco de bloqueados COM o checkbox na linha.
+    """
+    extra = f" · {n_novos} novos, {n_reenviaveis} reenviáveis" if n_reenviaveis else ""
+    return (
+        '<div class="rf-bloco aprov" style="padding-bottom:4px;margin-bottom:0">'
+        f"<h4>Liberados · {n_total} RFs{extra}</h4>"
+        '<p class="rf-exp" style="margin-bottom:0">Desmarque para deixar de fora '
+        "do envio. Reenviáveis começam desmarcados.</p>"
+        "</div>"
+    )
+
+
+# larguras das colunas da tabela de liberados (checkbox, RF, linha, situação, histórico)
+COLS_LIBERADOS = [0.7, 2.3, 0.9, 1.2, 2.9]
+
+
+def celula(texto: str, classe: str = "") -> str:
+    """Célula da tabela de liberados, com o mesmo estilo da tabela de bloqueados."""
+    cls = f' class="rf-cel {classe}"' if classe else ' class="rf-cel"'
+    return f"<div{cls}>{texto}</div>"
+
+
+def tabela_bloqueados(bloqueados: list) -> str:
+    """
+    Tabela SOMENTE LEITURA dos RFs bloqueados.
+    Não tem checkbox de propósito: RF com nota vinculada não é uma escolha
+    do usuário — ele não vai, e a tela precisa deixar isso explícito.
+    """
+    linhas = []
+    for b in bloqueados:
+        info = b["info"]
+        notas = info.get("notas") or [{}]
+        # um RF substituído tem 2 notas: mostra as duas, uma por linha visual
+        numeros = "<br>".join(
+            f'{_esc(n.get("numero") or "—")} {selo_status(n.get("status"), False)}'
+            for n in notas
+        )
+        linhas.append(
+            "<tr>"
+            f'<td class="rf-mono">{_esc(b["rf"])}</td>'
+            f'<td>{b["linha"]}</td>'
+            f'<td>{numeros}</td>'
+            f'<td>{selo_status(None, True) if info.get("substituicao") else ""}</td>'
+            f'<td class="rf-motivo">{_esc(crf.motivo_bloqueio(info))}</td>'
+            "</tr>"
+        )
+
+    # Cabeçalho enxuto: o "por quê" de cada linha está na coluna Motivo.
+    return (
+        '<div class="rf-bloco">'
+        f"<h4>Bloqueados · {len(bloqueados)} RFs não serão enviados</h4>"
+        '<p class="rf-exp">Possuem nota fiscal emitida. Linhas removidas do arquivo.</p>'
+        '<div class="rf-scroll"><table class="rf-tab"><thead><tr>'
+        "<th>RF</th><th>Linha</th><th>Nota fiscal</th><th></th><th>Motivo</th>"
+        "</tr></thead><tbody>" + "".join(linhas) + "</tbody></table></div></div>"
+    )
+
+
+# ============================================================
 # UI — Conferência de RFs (ativa apenas no fluxo VALE, após upload)
 # ============================================================
-# `linhas_remover` guarda as linhas do arquivo cujos RFs duplicados o usuário
-# optou por NÃO reenviar. O arquivo filtrado é gerado só na hora do envio,
-# mantendo o payload N8N idêntico ao padrão atual.
+# `linhas_remover` acumula as linhas que NÃO vão no envio:
+#   - bloqueados  -> entram à força, o usuário não escolhe
+#   - legado      -> entram só se o usuário não marcar "Reenviar"
+# O arquivo filtrado é gerado apenas na hora do envio, mantendo o payload
+# N8N idêntico ao padrão atual.
 linhas_remover = set()
 conferencia_ok = True  # quando False, o envio VALE fica bloqueado
 
@@ -262,7 +391,7 @@ if arquivo is not None and tipo_faturamento == "VALE":
     if not WEBHOOK_CONSULTA_RF_URL:
         conferencia_ok = False
         st.error(
-            "⚠️ O webhook de consulta de RFs não foi configurado. "
+            "O webhook de consulta de RFs não foi configurado. "
             "Adicione a chave `N8N_WEBHOOK_CONSULTA_RF_URL` em "
             "`.streamlit/secrets.toml` (ou nos Secrets do Streamlit Cloud)."
         )
@@ -271,7 +400,8 @@ if arquivo is not None and tipo_faturamento == "VALE":
         try:
             with st.spinner("Consultando RFs já cadastrados no banco de dados..."):
                 resultado = crf.conferir(
-                    arquivo.name, arquivo.getvalue(), WEBHOOK_CONSULTA_RF_URL, "VALE"
+                    arquivo.name, arquivo.getvalue(), WEBHOOK_CONSULTA_RF_URL, "VALE",
+                    liberar_canceladas=PERMITIR_REENVIO_CANCELADA,
                 )
         except ValueError as exc:
             conferencia_ok = False
@@ -285,7 +415,9 @@ if arquivo is not None and tipo_faturamento == "VALE":
             )
 
         if resultado is not None:
-            duplicados = resultado["duplicados"]
+            bloqueados = resultado["bloqueados"]
+            canceladas_lib = resultado.get("canceladas", [])
+            legado = resultado["legado"]
             novos = resultado["novos"]
 
             if not resultado["rfs"]:
@@ -294,74 +426,216 @@ if arquivo is not None and tipo_faturamento == "VALE":
                     'Nenhum RF encontrado no arquivo. Confirme se a coluna "RF" '
                     "está preenchida (cabeçalho na linha 1)."
                 )
-            elif not duplicados:
-                st.success(
-                    f"Nenhum RF repetido: os **{len(novos)} RFs** do arquivo são novos. "
-                    "Eles serão cadastrados no banco de dados pelo backend após o envio."
-                )
             else:
-                st.warning(
-                    f"**{len(duplicados)}** de **{len(resultado['rfs'])}** RFs do arquivo "
-                    "**já constam no banco de dados** (já foram enviados antes). "
-                    "Marque abaixo os que deseja reenviar mesmo assim."
-                )
+                # --- Bloqueados saem do envio SEMPRE, antes de qualquer escolha ---
+                linhas_remover |= crf.linhas_bloqueadas(resultado)
 
-                # ---- Seleção em lote -------------------------------------
-                chave = f"dups_{arquivo.name}_{len(arquivo.getvalue())}"
-                if f"{chave}_v" not in st.session_state:
-                    st.session_state[f"{chave}_v"] = 0
-                    st.session_state[f"{chave}_def"] = False
+                inject(card_resumo(
+                    len(novos), len(bloqueados), len(legado), len(canceladas_lib)
+                ))
 
-                col_a, col_b, _ = st.columns([1, 1, 2])
-                if col_a.button("Marcar todos", key=f"{chave}_all", use_container_width=True):
-                    st.session_state[f"{chave}_def"] = True
-                    st.session_state[f"{chave}_v"] += 1
-                if col_b.button("Desmarcar todos", key=f"{chave}_none", use_container_width=True):
-                    st.session_state[f"{chave}_def"] = False
-                    st.session_state[f"{chave}_v"] += 1
-
-                import pandas as pd
-
-                df_dups = pd.DataFrame(
-                    [
-                        {
-                            "Reenviar": st.session_state[f"{chave}_def"],
-                            "RF": d["rf"],
-                            "Linha no arquivo": d["linha"],
-                            "Registro no banco": str(d["ref_banco"]),
-                        }
-                        for d in duplicados
-                    ]
-                )
-                editado = st.data_editor(
-                    df_dups,
-                    height=min(320, 45 + 35 * len(df_dups)),  # lista com rolagem
-                    hide_index=True,
-                    use_container_width=True,
-                    key=f"{chave}_editor_{st.session_state[f'{chave}_v']}",
-                    column_config={
-                        "Reenviar": st.column_config.CheckboxColumn(
-                            "Reenviar", help="Marque para reenviar este RF mesmo já constando no banco."
-                        ),
-                    },
-                    disabled=["RF", "Linha no arquivo", "Registro no banco"],
-                )
-
-                nao_selecionados = editado[~editado["Reenviar"]]
-                linhas_remover = set(nao_selecionados["Linha no arquivo"].tolist())
-                qtd_reenvio = len(editado) - len(nao_selecionados)
-
-                if not novos and qtd_reenvio == 0:
-                    conferencia_ok = False
-                    st.info(
-                        "Todos os RFs do arquivo já constam no banco e nenhum foi "
-                        "marcado para reenvio — não há nada a enviar."
+                # ---- RF repetido dentro do PRÓPRIO arquivo ----------------
+                # Só alerta para linhas que PODEM ir no envio: duplicata entre
+                # linhas bloqueadas é irrelevante (não vão de qualquer jeito).
+                linhas_bloq = crf.linhas_bloqueadas(resultado)
+                repetidos = {
+                    rf: [ln for ln in linhas if ln not in linhas_bloq]
+                    for rf, linhas in resultado.get("duplicados_no_arquivo", {}).items()
+                }
+                repetidos = {rf: ls for rf, ls in repetidos.items() if len(ls) > 1}
+                if repetidos:
+                    lista = " · ".join(
+                        f"RF {rf} nas linhas {', '.join(map(str, ls))}"
+                        for rf, ls in sorted(repetidos.items())
                     )
+                    st.warning(
+                        f"**{len(repetidos)} RF(s) repetidos no arquivo:** {lista}. "
+                        "Linhas repetidas ficam **bloqueadas para envio** — mantenha "
+                        "apenas uma na planilha e envie o arquivo novamente."
+                    )
+
+                # ---- Balde 1: BLOQUEADOS (somente leitura) ----------------
+                if bloqueados:
+                    inject(tabela_bloqueados(bloqueados))
+
+                    if not PERMITIR_REENVIO_CANCELADA:
+                        canc_bloq = [b for b in bloqueados if crf.tem_cancelada(b["info"])]
+                        if canc_bloq:
+                            # o não-óbvio em uma linha: cancelar não devolve o RF
+                            st.error(
+                                f"**{len(canc_bloq)} RFs com nota cancelada.** "
+                                "O cancelamento não libera o RF para novo faturamento."
+                            )
+
+                # ---- Balde 2 + 3 numa tabela só: o que PODE ir ------------
+                # Novos, reenviáveis e canceladas liberadas convivem na mesma
+                # lista; o checkbox é a única diferença. Novo já vem marcado;
+                # reenvio e cancelada vêm desmarcados (decisão consciente).
+                qtd_reenvio = 0
+                qtd_canc_envio = 0
+                total_envio = 0
+                if novos or legado or canceladas_lib:
+                    def _hist_cancelada(info):
+                        nums = [n.get("numero") for n in info.get("notas", []) if n.get("numero")]
+                        return "NF " + ", ".join(nums) + " cancelada" if nums else "nota cancelada"
+
+                    candidatos = (
+                        [{"rf": n["rf"], "linha": n["linha"], "tipo": "novo", "detalhe": ""}
+                         for n in novos]
+                        + [{"rf": l["rf"], "linha": l["linha"], "tipo": "reenvio",
+                            "detalhe": (f"enviado em {l['info']['enviado_em']}"
+                                        if l["info"].get("enviado_em") else "enviado antes")}
+                           for l in legado]
+                        + [{"rf": c["rf"], "linha": c["linha"], "tipo": "cancelada",
+                            "detalhe": _hist_cancelada(c["info"])}
+                           for c in canceladas_lib]
+                    )
+                    # marca as linhas com o mesmo RF repetido no arquivo:
+                    # o NÚMERO ganha destaque visual na própria linha, além
+                    # da anotação de em qual outra linha ele aparece
+                    for c in candidatos:
+                        outras = [ln for ln in repetidos.get(c["rf"], []) if ln != c["linha"]]
+                        c["repetido"] = bool(outras)
+                        if outras:
+                            extra = "repetido na linha " + ", ".join(map(str, outras))
+                            c["detalhe"] = f"{c['detalhe']} · {extra}" if c["detalhe"] else extra
+                    candidatos.sort(key=lambda x: x["linha"])
+
+                    if canceladas_lib:
+                        st.warning(
+                            f"**{len(canceladas_lib)} RF(s) de nota cancelada com reenvio "
+                            "liberado** — exceção temporária durante a reforma. "
+                            "Começam desmarcados; marque para reenviar."
+                        )
+
+                    inject(cabecalho_liberados(
+                        len(candidatos), len(novos), len(legado) + len(canceladas_lib)
+                    ))
+
+                    chave = f"envio_{arquivo.name}_{len(arquivo.getvalue())}"
+
+                    # rótulos curtos: "Desmarcar todos" quebrava em duas linhas e
+                    # deixava os dois botões com alturas diferentes
+                    col_a, col_b, _ = st.columns([1, 1, 3])
+                    if col_a.button("Todos", key=f"{chave}_all", use_container_width=True):
+                        st.session_state[f"{chave}_forcar_agora"] = True
+                    if col_b.button("Nenhum", key=f"{chave}_none", use_container_width=True):
+                        st.session_state[f"{chave}_forcar_agora"] = False
+
+                    # "Marcar/Desmarcar todos" grava direto no state de cada
+                    # checkbox. Precisa acontecer ANTES dos widgets nascerem —
+                    # o clique no botão já provocou o rerun, então aqui é seguro.
+                    # Linha repetida NUNCA é marcada, nem pelo "Marcar todos":
+                    # a duplicidade se resolve na planilha, não na tela.
+                    forcar = st.session_state.pop(f"{chave}_forcar_agora", None)
+                    if forcar is not None:
+                        for c in candidatos:
+                            st.session_state[f"{chave}_chk_{c['linha']}"] = (
+                                forcar and not c.get("repetido")
+                            )
+
+                    # Container com altura fixa = rolagem sem esticar a página.
+                    # A chave é FIXA e sem o prefixo das outras chaves: o CSS
+                    # escopa por `.st-key-tabliberados`, e se o prefixo fosse
+                    # compartilhado com os botões/checkboxes (que usam `chave`)
+                    # o estilo do painel vazaria para eles.
+                    altura = min(330, 60 + 34 * len(candidatos))
+                    try:
+                        caixa = st.container(height=altura, key="tabliberados")
+                    except TypeError:      # Streamlit sem `key` em container
+                        caixa = st.container(height=altura)
+
+                    with caixa:
+                        # cabeçalho da tabela
+                        h = st.columns(COLS_LIBERADOS, vertical_alignment="center")
+                        for col, titulo in zip(h, ["", "RF", "LINHA", "SITUAÇÃO", "HISTÓRICO"]):
+                            col.markdown(
+                                f'<div class="rf-cab">{titulo}</div>', unsafe_allow_html=True
+                            )
+
+                        marcados = {}
+                        for c in candidatos:
+                            k = f"{chave}_chk_{c['linha']}"
+                            if k not in st.session_state:
+                                # novo já vai; reenvio é decisão consciente
+                                # novo já vai; reenvio e cancelada são decisão consciente
+                                st.session_state[k] = (
+                                    c["tipo"] == "novo" and not c.get("repetido")
+                                )
+                            if c.get("repetido"):
+                                # repetido é TRAVADO: desmarcado e sem interação,
+                                # até o usuário corrigir a planilha
+                                st.session_state[k] = False
+
+                            cols = st.columns(COLS_LIBERADOS, vertical_alignment="center")
+                            marcados[c["linha"]] = cols[0].checkbox(
+                                f"Enviar RF {c['rf']}",
+                                key=k,
+                                label_visibility="collapsed",
+                                disabled=bool(c.get("repetido")),
+                            )
+                            # RF repetido no arquivo: o NÚMERO fica destacado em
+                            # âmbar com o selo REPETIDO colado nele — a linha
+                            # denuncia sozinha, sem depender do histórico
+                            rf_html = (
+                                f'<span class="rf-num-rep">{_esc(c["rf"])}</span>'
+                                '<span class="rf-selo repetido">REPETIDO</span>'
+                                if c.get("repetido")
+                                else _esc(c["rf"])
+                            )
+                            cols[1].markdown(
+                                celula(rf_html, "rf-mono"), unsafe_allow_html=True
+                            )
+                            cols[2].markdown(celula(str(c["linha"])), unsafe_allow_html=True)
+                            selo = {
+                                "novo": '<span class="rf-selo novo">NOVO</span>',
+                                "reenvio": '<span class="rf-selo reenvio">REENVIO</span>',
+                                "cancelada": '<span class="rf-selo cancelada">CANCELADA</span>',
+                            }[c["tipo"]]
+                            cols[3].markdown(celula(selo), unsafe_allow_html=True)
+                            cols[4].markdown(
+                                celula(_esc(c["detalhe"]), "rf-motivo"), unsafe_allow_html=True
+                            )
+
+                    fora_linhas = {ln for ln, ok in marcados.items() if not ok}
+                    linhas_remover |= fora_linhas
+                    dentro = [c for c in candidatos if c["linha"] not in fora_linhas]
+                    total_envio = len(dentro)
+                    qtd_reenvio = sum(1 for c in dentro if c["tipo"] != "novo")
+                    qtd_canc_envio = sum(1 for c in dentro if c["tipo"] == "cancelada")
+
+                # ---- Trava do .xlsb: a estrutura do envio NÃO pode mudar --
+                # Remover linha de .xlsb obriga a regravar o arquivo, e o
+                # pyxlsb não escreve .xlsb -- o filtro converteria para .xlsx,
+                # mudando `filename` e `mime_type` no payload. Como a remoção
+                # de bloqueado é FORÇADA, isso passaria a acontecer sozinho.
+                # Preferimos barrar o envio a entregar outra estrutura à esteira.
+                ext_arquivo = arquivo.name.rsplit(".", 1)[-1].lower()
+                if ext_arquivo == "xlsb" and linhas_remover:
+                    conferencia_ok = False
+                    st.error(
+                        "**Arquivo .xlsb com linhas a remover: envio bloqueado.** "
+                        "Salve a planilha como `.xlsx` e envie novamente."
+                    )
+
+                # ---- Rodapé: o que vai, afinal ---------------------------
+                # total_envio e qtd_reenvio vêm da tabela acima (o usuário pode
+                # ter desmarcado linhas), não de len(novos).
+                if not conferencia_ok:
+                    pass  # já há erro na tela; não sobrepor com outra mensagem
+                elif total_envio == 0:
+                    conferencia_ok = False
+                    st.info("**Nenhum RF a enviar.** Todos estão bloqueados ou não foram selecionados.")
                 else:
-                    st.caption(
-                        f"Serão enviados **{len(novos)} RFs novos** + "
-                        f"**{qtd_reenvio} reenvios** "
-                        f"({len(nao_selecionados)} linhas duplicadas serão removidas do arquivo)."
+                    fora = len(linhas_remover)
+                    canc_txt = (
+                        f" Inclui {qtd_canc_envio} de nota cancelada."
+                        if qtd_canc_envio else ""
+                    )
+                    st.success(
+                        f"**{total_envio} RFs** serão enviados. "
+                        f"{fora} linhas removidas, sendo {len(bloqueados)} bloqueadas."
+                        f"{canc_txt}"
                     )
 
 st.write("")

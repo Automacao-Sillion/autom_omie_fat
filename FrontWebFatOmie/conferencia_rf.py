@@ -27,6 +27,13 @@ import requests
 RF_COLUNA = "RF"
 TIMEOUT_CONSULTA = 60  # segundos
 
+# Status de nota devolvidos pelo backend. Medido na Omie em 10/08/2026: o
+# cStatusNFSe tem só dois valores, F (faturada) e C (cancelada) -- não existe
+# código para "substituída", que se detecta pelo mesmo RF em 2 notas.
+STATUS_FATURADA = "FATURADA"
+STATUS_CANCELADA = "CANCELADA"
+STATUS_PADRAO = STATUS_FATURADA  # quando o backend não informa
+
 
 class ArquivoMemoria:
     """Imita a interface do UploadedFile do Streamlit (name + getvalue)."""
@@ -173,8 +180,26 @@ def _extrair_csv(conteudo: bytes) -> list:
 # ============================================================
 def consultar_rfs(url: str, rfs: list, tipo_faturamento: str = "VALE") -> dict:
     """
-    Envia a lista de RFs ao N8N e retorna {rf_normalizado: referência_no_banco}.
-    A referência é a linha/registro informado pelo N8N (ou "-" se não vier).
+    Envia a lista de RFs ao N8N e retorna {rf_normalizado: info}, onde info é:
+
+        {
+          "bloqueado":    bool,        # tem nota vinculada -> NÃO pode ser enviado
+          "legado":       bool,        # já foi enviado antes, mas sem nota vinculada
+          "enviado_em":   str | None,  # quando foi enviado (caso legado)
+          "notas":        [ {"numero", "status", "os", "emp"} ],
+          "substituicao": bool,        # o mesmo RF em mais de uma nota
+          "ref":          str,         # referência legível (campo "linha" do webhook)
+        }
+
+    O mesmo RF pode voltar em VÁRIAS linhas da resposta: é assim que a
+    substituição se manifesta (nota cancelada + nota nova para o mesmo RF).
+    Por isso as notas são acumuladas em lista, não sobrescritas.
+
+    Tolera a resposta ANTIGA (`{"rf", "linha"}`, sem o campo `bloqueado`):
+    nesse caso o RF cai como *legado* e o comportamento fica idêntico ao de
+    antes — aviso com opção de reenvio, sem bloqueio. Assim o front continua
+    funcionando se o webhook v2 sair do ar.
+
     Levanta requests.RequestException em falha de rede e ValueError em
     resposta inesperada.
     """
@@ -200,18 +225,93 @@ def consultar_rfs(url: str, rfs: list, tipo_faturamento: str = "VALE") -> dict:
 
     existentes = {}
     for item in dados:
-        if isinstance(item, dict):
-            rf = item.get("rf", item.get("RF", item.get("numero_rf")))
-            ref = item.get(
-                "linha",
-                item.get("linha_banco", item.get("row", item.get("registro", item.get("id", "-")))),
-            )
+        if not isinstance(item, dict):
+            # resposta mais simples possível: só a lista de RFs
+            rf = normalizar_rf(item)
+            if rf:
+                existentes.setdefault(rf, _info_vazia())["legado"] = True
+            continue
+
+        rf = normalizar_rf(item.get("rf", item.get("RF", item.get("numero_rf"))))
+        if not rf:
+            continue
+
+        ref = item.get(
+            "linha",
+            item.get("linha_banco", item.get("row", item.get("registro", item.get("id", "-")))),
+        )
+
+        info = existentes.setdefault(rf, _info_vazia())
+        if ref not in (None, "") and info["ref"] == "-":
+            info["ref"] = str(ref)
+
+        bloqueado = bool(item.get("bloqueado", False))
+        if bloqueado:
+            info["bloqueado"] = True
+            info["notas"].append({
+                "numero": _texto(item.get("numero_nota")),
+                "status": (_texto(item.get("status_nota")) or STATUS_PADRAO).upper(),
+                "os": _texto(item.get("os")),
+                "emp": _texto(item.get("emp")),
+            })
         else:
-            rf, ref = item, "-"
-        rf = normalizar_rf(rf)
-        if rf:
-            existentes[rf] = ref if ref is not None else "-"
+            # sem "bloqueado" (webhook antigo) ou bloqueado=false -> legado
+            info["legado"] = True
+            if item.get("enviado_em"):
+                info["enviado_em"] = _texto(item.get("enviado_em"))
+
+        if item.get("substituicao"):
+            info["substituicao"] = True
+
+    # o mesmo RF em 2+ notas é, por si, a assinatura de uma substituição
+    for info in existentes.values():
+        if len(info["notas"]) > 1:
+            info["substituicao"] = True
+        # bloqueio vence legado: se há nota, o RF não passa
+        if info["bloqueado"]:
+            info["legado"] = False
+
     return existentes
+
+
+def _info_vazia() -> dict:
+    return {
+        "bloqueado": False,
+        "legado": False,
+        "enviado_em": None,
+        "notas": [],
+        "substituicao": False,
+        "ref": "-",
+    }
+
+
+def _texto(valor) -> str:
+    return "" if valor is None else str(valor).strip()
+
+
+def tem_cancelada(info: dict) -> bool:
+    """True se alguma das notas do RF está cancelada."""
+    return any(n.get("status") == STATUS_CANCELADA for n in info.get("notas", []))
+
+
+def todas_canceladas(info: dict) -> bool:
+    """
+    True se o RF tem nota(s) e TODAS estão canceladas.
+    Diferente de tem_cancelada: numa substituição (cancelada + faturada nova),
+    tem_cancelada é True mas todas_canceladas é False — e aí o RF continua
+    bloqueado, porque a nota substituta está faturada e procede.
+    """
+    notas = info.get("notas", [])
+    return bool(notas) and all(n.get("status") == STATUS_CANCELADA for n in notas)
+
+
+def motivo_bloqueio(info: dict) -> str:
+    """Frase curta explicando ao usuário por que o RF não pode ser enviado."""
+    if info.get("substituicao"):
+        return "RF já usado em mais de uma nota (substituição)"
+    if tem_cancelada(info):
+        return "Nota cancelada — refaturar exige liberação"
+    return "Já existe nota fiscal para este RF"
 
 
 # ============================================================
@@ -285,29 +385,73 @@ def _xlsb_para_xlsx_filtrado(conteudo: bytes, linhas_remover: set) -> bytes:
 # Orquestração (usada pelo app.py)
 # ============================================================
 def conferir(nome_arquivo: str, conteudo: bytes, url_consulta: str,
-             tipo_faturamento: str = "VALE") -> dict:
+             tipo_faturamento: str = "VALE",
+             liberar_canceladas: bool = False) -> dict:
     """
-    Executa extração + consulta e devolve:
+    Executa extração + consulta e separa os RFs do arquivo em baldes:
+
     {
-      "rfs":        [{"linha": n, "rf": str}],          # todos os RFs do arquivo
-      "duplicados": [{"linha": n, "rf": str, "ref_banco": ...}],
-      "novos":      [{"linha": n, "rf": str}],
+      "rfs":        [{"linha": n, "rf": str}],              # todos os RFs do arquivo
+      "bloqueados": [{"linha": n, "rf": str, "info": {...}}],  # tem nota -> NÃO envia
+      "canceladas": [{"linha": n, "rf": str, "info": {...}}],  # ver liberar_canceladas
+      "legado":     [{"linha": n, "rf": str, "info": {...}}],  # enviado antes, sem nota
+      "novos":      [{"linha": n, "rf": str}],                 # nunca vistos -> envia
+      "duplicados_no_arquivo": {rf: [linhas]},   # mesmo RF em 2+ linhas do arquivo
       "consultado_em": datetime,
+
+      # compatibilidade: quem ainda espera o formato antigo
+      "duplicados": bloqueados + canceladas + legado,
     }
+
+    liberar_canceladas — TEMPORÁRIO (12/08/2026, vigente até o término da
+    reforma): quando True, RF cujas notas estão TODAS canceladas sai do balde
+    de bloqueados e vai para "canceladas" — o front oferece reenvio mediante
+    marcação explícita. Nota FATURADA continua bloqueando sempre; substituição
+    (cancelada + faturada) também, porque a substituta procede. Com False,
+    comportamento original: cancelada bloqueia.
+
+    Um RF pode aparecer em mais de uma LINHA do arquivo; cada linha entra no
+    balde correspondente, porque o filtro do arquivo trabalha por linha.
     """
     rfs = extrair_rfs(nome_arquivo, conteudo)
     existentes = consultar_rfs(url_consulta, [r["rf"] for r in rfs], tipo_faturamento)
 
-    duplicados, novos = [], []
+    bloqueados, canceladas, legado, novos = [], [], [], []
     for r in rfs:
-        if r["rf"] in existentes:
-            duplicados.append({**r, "ref_banco": existentes[r["rf"]]})
-        else:
+        info = existentes.get(r["rf"])
+        if info is None:
             novos.append(r)
+        elif info["bloqueado"]:
+            if liberar_canceladas and todas_canceladas(info):
+                canceladas.append({**r, "info": info})
+            else:
+                bloqueados.append({**r, "info": info})
+        else:
+            legado.append({**r, "info": info})
+
+    # mesmo RF em mais de uma linha do arquivo = risco de faturar em duplicidade
+    linhas_por_rf = {}
+    for r in rfs:
+        linhas_por_rf.setdefault(r["rf"], []).append(r["linha"])
+    duplicados_no_arquivo = {
+        rf: linhas for rf, linhas in linhas_por_rf.items() if len(linhas) > 1
+    }
 
     return {
         "rfs": rfs,
-        "duplicados": duplicados,
+        "bloqueados": bloqueados,
+        "canceladas": canceladas,
+        "legado": legado,
         "novos": novos,
+        "duplicados_no_arquivo": duplicados_no_arquivo,
         "consultado_em": datetime.now(),
+        "duplicados": bloqueados + canceladas + legado,
     }
+
+
+def linhas_bloqueadas(resultado: dict) -> set:
+    """
+    Números de linha do arquivo que precisam sair do envio OBRIGATORIAMENTE.
+    O usuário não escolhe: RF com nota vinculada não vai, e ponto.
+    """
+    return {b["linha"] for b in resultado.get("bloqueados", [])}

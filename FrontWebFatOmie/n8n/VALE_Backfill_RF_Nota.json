@@ -1,0 +1,317 @@
+{
+  "name": "VALE_Backfill_RF_Nota",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trg",
+      "name": "Executar manualmente",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -720,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1,
+              "triggerAtMinute": 5
+            }
+          ]
+        }
+      },
+      "id": "sch",
+      "name": "De hora em hora",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -720,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "k",
+              "name": "OMIE_APP_KEY",
+              "value": "COLE_A_APP_KEY",
+              "type": "string"
+            },
+            {
+              "id": "s",
+              "name": "OMIE_APP_SECRET",
+              "value": "COLE_O_APP_SECRET",
+              "type": "string"
+            },
+            {
+              "id": "d",
+              "name": "DRY_RUN",
+              "value": "false",
+              "type": "string"
+            },
+            {
+              "id": "m",
+              "name": "MODO",
+              "value": "INCREMENTAL",
+              "type": "string"
+            },
+            {
+              "id": "f",
+              "name": "PAGINAS_DO_FIM",
+              "value": "3",
+              "type": "string"
+            },
+            {
+              "id": "p",
+              "name": "PAGINA_INICIAL",
+              "value": "1",
+              "type": "string"
+            },
+            {
+              "id": "r",
+              "name": "POR_PAGINA",
+              "value": "50",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cfg",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================================\n// Varre as Ordens de Servico da Omie e extrai o vinculo RF -> OS.\n// Mode: Run Once for All Items\n//\n// DESCOBERTA (sondagem de 10/08/2026): o RF NAO esta na NFS-e, esta na OS.\n// O ObterNFSe nao traz o RF. O ListarOS traz -- e em 3 campos que concordam:\n//   Observacoes.cObsOS                       -> o RF PURO (\"6203092738\")\n//   InformacoesAdicionais.cDadosAdicNF       -> \"No RF:6203092738 | No Contrato:...\"\n//   Cabecalho.cCodIntOS                      -> \"OS-VALE-<CNPJ>-<RF>-<seq>\"\n//\n// PEGADINHA CRITICA: sem apenas_importado_api = \"S\" vem so' 157 OSs (as\n// criadas a mao). As da esteira sao criadas via API e ficam de fora do\n// filtro padrao. Com \"S\" vem ~3.734.\n//\n// CUSTO: ~187 chamadas (20/pagina) para 3.734 OSs -- e nao 1 por nota.\n// O ListarOS devolve o registro COMPLETO, entao nao precisa ConsultarOS.\n// =====================================================================\n\nconst cfg       = $input.first().json;\nconst appKey    = cfg.OMIE_APP_KEY;\nconst appSecret = cfg.OMIE_APP_SECRET;\nconst DRY_RUN   = String(cfg.DRY_RUN) === 'true';\n\nif (!appKey || !appSecret || String(appKey).indexOf('COLE_') === 0) {\n  throw new Error('Preencha OMIE_APP_KEY e OMIE_APP_SECRET no no Config.');\n}\n\nconst POR_PAGINA     = Number(cfg.POR_PAGINA || 50);\nconst PAGINA_INICIAL = Number(cfg.PAGINA_INICIAL || 1);\n\n// MODO = INCREMENTAL (padrao, para o agendado) ou COMPLETO.\n//\n// O ListarOS devolve as OS em ordem CRESCENTE de numero, entao as NOVAS\n// estao nas ULTIMAS paginas. O incremental le a primeira pagina (so' para\n// descobrir total_de_paginas) + as N ultimas: ~4 chamadas por dia em vez\n// das ~75 de uma varredura completa.\n//\n// PAGINAS_DO_FIM = 3 a 50/pagina = as 150 OS mais recentes. Isso e' de\n// proposito uma JANELA MOVEL, nao \"so' as de ontem\": a OS pode ser criada\n// antes da nota existir na NF, e o JOIN ignora OS sem nota. Reler os\n// ultimos dias garante que o vinculo apareca quando a nota chegar.\n//\n// Rode COMPLETO uma vez por mes (ou se desconfiar de buraco): o\n// INSERT IGNORE torna reprocessar inofensivo.\nconst MODO           = String(cfg.MODO || 'INCREMENTAL').toUpperCase();\nconst PAGINAS_DO_FIM = Math.max(1, Number(cfg.PAGINAS_DO_FIM || 3));\nconst PAUSA_MS       = 300;\nconst MAX_TENTATIVAS = 3;\nconst ESPERA_RETRY_MS = [5000, 15000, 30000];\n\n// RF da Vale: EXATOS 10 digitos comecando em 62.\n// Nao usar \\b62\\d{8,12}\\b: isso casa CNPJ (ex. 62002498000189).\nconst RF_EXATO = /(?<!\\d)62\\d{8}(?!\\d)/;\nconst RF_ROTULADO = /N.\\s*RF\\s*:\\s*(\\d{10})/i;\n\nconst chamar = (opcoes) => this.helpers.httpRequest(opcoes);\n\nfunction motivoOmie(e) {\n  const cands = [\n    e && e.response && e.response.data,\n    e && e.response && e.response.body,\n    e && e.cause && e.cause.response && e.cause.response.data,\n    e && e.error, e && e.description,\n  ];\n  for (const c of cands) {\n    if (!c) continue;\n    let o = c;\n    if (typeof o === 'string') {\n      try { o = JSON.parse(o); } catch (_) { return o.slice(0, 400); }\n    }\n    if (o && (o.faultstring || o.faultcode)) {\n      return String(o.faultcode || '') + ' ' + String(o.faultstring || '');\n    }\n    try { return JSON.stringify(o).slice(0, 400); } catch (_) { /* segue */ }\n  }\n  return e && e.message ? String(e.message) : 'sem detalhe no corpo';\n}\n\nasync function pedirPagina(p) {\n  let ultimo = null;\n  for (let t = 0; t < MAX_TENTATIVAS; t++) {\n    try {\n      return await chamar({\n        method: 'POST',\n        url: 'https://app.omie.com.br/api/v1/servicos/os/',\n        headers: { 'Content-Type': 'application/json' },\n        body: {\n          call: 'ListarOS', app_key: appKey, app_secret: appSecret,\n          param: [{\n            pagina: p,\n            registros_por_pagina: POR_PAGINA,\n            apenas_importado_api: 'S',\n          }],\n        },\n        json: true,\n      });\n    } catch (e) {\n      ultimo = e;\n      console.warn('pagina ' + p + ', tentativa ' + (t + 1) + '/' + MAX_TENTATIVAS\n        + ' -> ' + motivoOmie(e));\n      if (t < MAX_TENTATIVAS - 1) await new Promise((s) => setTimeout(s, ESPERA_RETRY_MS[t]));\n    }\n  }\n  const err = new Error('A Omie recusou a pagina ' + p + ' em ' + MAX_TENTATIVAS\n    + ' tentativas. MOTIVO: ' + motivoOmie(ultimo)\n    + ' | Retome com PAGINA_INICIAL = ' + p + ' no no Config.');\n  err.pagina = p;\n  throw err;\n}\n\nfunction extrairRF(os) {\n  const cab  = os.Cabecalho || {};\n  const obs  = String((os.Observacoes || {}).cObsOS || '');\n  const adic = String((os.InformacoesAdicionais || {}).cDadosAdicNF || '');\n  const cint = String(cab.cCodIntOS || '');\n\n  const mObs  = obs.match(RF_EXATO);\n  const mRot  = adic.match(RF_ROTULADO);\n  const mAdic = mRot ? mRot[1] : (adic.match(RF_EXATO) || [null])[0];\n  const mInt  = cint.match(RF_EXATO);\n\n  const fontes = {\n    obs: mObs ? mObs[0] : null,\n    adic: mAdic || null,\n    codint: mInt ? mInt[0] : null,\n  };\n  const valores = [fontes.obs, fontes.adic, fontes.codint].filter(Boolean);\n  const distintos = [...new Set(valores)];\n\n  return {\n    rf: distintos.length === 1 ? distintos[0] : (fontes.obs || fontes.adic || fontes.codint || null),\n    fontes: fontes,\n    qtd_fontes: valores.length,\n    divergente: distintos.length > 1,\n  };\n}\n\nconst pares = [];      // {rf, cNumOs, status_nota, qtd_fontes}\nconst divergentes = []; // RF diferente entre os 3 campos\nlet osLidas = 0, osSemRF = 0, chamadas = 0;\nlet totalPaginas = 1, totalRegistros = null;\nlet parcial = false, proxima_pagina = null, motivo_parada = null;\n\nfunction processar(r) {\n  const lista = r.osCadastro || r.os_cadastro || [];\n  for (const os of lista) {\n    osLidas++;\n    const cab  = os.Cabecalho || {};\n    const info = os.InfoCadastro || {};\n    const achado = extrairRF(os);\n\n    if (!achado.rf) { osSemRF++; continue; }          // OS que nao e' da Vale\n    if (achado.divergente) divergentes.push({ cNumOS: cab.cNumOS, fontes: achado.fontes });\n\n    // A OS ja' diz se foi faturada/cancelada -- status de graca.\n    const cancelada = String(info.cCancelada || '').toUpperCase() === 'S';\n    const faturada  = String(info.cFaturada  || '').toUpperCase() === 'S';\n\n    pares.push({\n      rf: achado.rf,\n      // NF.cNumOs guarda com 15 digitos e zeros a esquerda\n      cNumOs: String(cab.cNumOS == null ? '' : cab.cNumOS).padStart(15, '0'),\n      status_nota: cancelada ? 'CANCELADA' : (faturada ? 'FATURADA' : null),\n      qtd_fontes: achado.qtd_fontes,\n    });\n  }\n}\n\n// ---- 1) primeira pagina: tambem serve para descobrir total_de_paginas ----\nconst primeira = await pedirPagina(PAGINA_INICIAL);\nchamadas++;\ntotalPaginas   = Number(primeira.total_de_paginas || 1);\ntotalRegistros = primeira.total_de_registros == null ? null : Number(primeira.total_de_registros);\nprocessar(primeira);\nconsole.log('pagina ' + PAGINA_INICIAL + '/' + totalPaginas + ' (' + totalRegistros + ' OS na conta)');\n\n// ---- 2) que paginas ainda ler ----\nconst fila = [];\nif (MODO === 'COMPLETO') {\n  for (let p = PAGINA_INICIAL + 1; p <= totalPaginas; p++) fila.push(p);\n} else {\n  const inicio = Math.max(PAGINA_INICIAL + 1, totalPaginas - PAGINAS_DO_FIM + 1);\n  for (let p = inicio; p <= totalPaginas; p++) fila.push(p);\n}\nconsole.log('modo ' + MODO + ': ' + (fila.length + 1) + ' chamada(s) no total'\n  + (MODO === 'COMPLETO' ? '' : ' (paginas do fim: ' + fila.join(',') + ')'));\n\n// ---- 3) le a fila ----\nfor (const p of fila) {\n  await new Promise((s) => setTimeout(s, PAUSA_MS));\n  let r;\n  try {\n    r = await pedirPagina(p);\n  } catch (e) {\n    if (!pares.length) throw e;   // nada colhido: falha de verdade\n    parcial = true;\n    proxima_pagina = e.pagina || p;\n    motivo_parada = e.message;\n    console.warn('PARCIAL: parou na pagina ' + proxima_pagina + ' com ' + pares.length + ' par(es).');\n    break;\n  }\n  chamadas++;\n  processar(r);\n  console.log('pagina ' + p + '/' + totalPaginas + ' - OS lidas ' + osLidas + ', com RF ' + pares.length);\n}\n\n// Dedup: mesma (rf, cNumOs) nao precisa entrar duas vezes.\nconst vistos = new Set();\nconst unicos = [];\nfor (const p of pares) {\n  const k = p.rf + '|' + p.cNumOs;\n  if (vistos.has(k)) continue;\n  vistos.add(k);\n  unicos.push(p);\n}\n\nconsole.log('total: ' + osLidas + ' OS lidas, ' + unicos.length + ' com RF, '\n  + osSemRF + ' sem RF, ' + divergentes.length + ' divergentes');\n\nreturn [{\n  json: {\n    DRY_RUN: DRY_RUN,\n    modo: MODO,\n    chamadas_api: chamadas,\n    pagina_inicial: PAGINA_INICIAL,\n    total_paginas: totalPaginas,\n    total_registros_omie: totalRegistros,\n    parcial: parcial,\n    proxima_pagina: proxima_pagina,\n    motivo_parada: motivo_parada,\n    os_lidas: osLidas,\n    os_sem_rf: osSemRF,\n    divergentes: divergentes.slice(0, 20),\n    qtd_divergentes: divergentes.length,\n    pares: unicos,\n  },\n}];\n"
+      },
+      "id": "var",
+      "name": "Varre_OS_Omie",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================================\n// Monta o SQL em LOTES. Dois sabores, o IF escolhe qual roda:\n//   sql_diag   -> SELECT de diagnostico (nao grava nada)\n//   sql_insert -> INSERT ... SELECT com o JOIN na NF (grava)\n// Mode: Run Once for All Items\n//\n// O JOIN acontece NO BANCO: os pares (rf, cNumOs) vem da Omie e a nota vem\n// da NF por cNumOs. OS sem nota correspondente e' simplesmente ignorada\n// pelo JOIN -- e contada no diagnostico.\n// =====================================================================\n\nconst TB_NOTA  = 'kvm4_db.rf_nota';\nconst TB_NF    = 'kvm4_db.NF';\nconst TB_ENVIO = 'kvm4_db.rfs_faturados';\nconst LOTE = 400;\n\nconst d = $input.first().json;\nconst pares = Array.isArray(d.pares) ? d.pares : [];\n\nif (!pares.length) {\n  throw new Error('Nenhum par RF/OS colhido da Omie. Confira as credenciais e o filtro apenas_importado_api = S.');\n}\n\nconst esc = (s) => String(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"''\");\n\n// tabela derivada com os pares deste lote\nfunction derivada(bloco) {\n  return bloco.map(function (p, i) {\n    const st = p.status_nota ? \"'\" + esc(p.status_nota) + \"'\" : 'NULL';\n    const sel = i === 0 ? 'SELECT ' : 'UNION ALL SELECT ';\n    return sel + \"'\" + esc(p.rf) + \"' AS rf, '\" + esc(p.cNumOs) + \"' AS cNumOs, \"\n      + st + ' AS status_nota';\n  }).join(' ');\n}\n\nconst saida = [];\n\nfor (let i = 0; i < pares.length; i += LOTE) {\n  const bloco = pares.slice(i, i + LOTE);\n  const t = '(' + derivada(bloco) + ') t';\n\n  // ---- diagnostico: o que ACONTECERIA, sem gravar ----\n  const sql_diag =\n    'SELECT COUNT(*) AS pares_no_lote,'\n    + ' SUM(n.nIdNf IS NOT NULL) AS com_nota,'\n    + ' SUM(n.nIdNf IS NULL) AS sem_nota,'\n    + ' SUM(n.nIdNf IS NOT NULL AND f.rf IS NULL) AS rf_invisivel_hoje,'\n    + ' SUM(x.rf IS NOT NULL) AS ja_na_rf_nota,'\n    + \" SUM(t.status_nota = 'CANCELADA') AS canceladas,\"\n    // Nomeia os casos sem nota em vez de so' contar: sao poucos (3 em\n    // 3.172 na medicao de 10/08/2026) e cada um precisa de olho humano --\n    // OS nunca faturada e' comportamento CORRETO (nao houve cobranca, o RF\n    // deve seguir liberado), nao um buraco.\n    + \" GROUP_CONCAT(IF(n.nIdNf IS NULL, CONCAT(t.rf,'@OS',t.cNumOs), NULL)\"\n    + \"   ORDER BY t.rf SEPARATOR ' | ') AS quais_sem_nota\"\n    + ' FROM ' + t\n    + ' LEFT JOIN ' + TB_NF + ' n ON n.cNumOs = t.cNumOs'\n    + ' LEFT JOIN ' + TB_ENVIO + ' f ON f.rf = t.rf'\n    + ' LEFT JOIN ' + TB_NOTA + ' x ON x.rf = t.rf AND x.nIdNf = n.nIdNf';\n\n  // ---- gravacao: INSERT IGNORE, idempotente pela PK (rf, nIdNf) ----\n  const sql_insert =\n    'INSERT IGNORE INTO ' + TB_NOTA\n    + ' (rf, nIdNf, cNumNFSe, cNumOs, emp, status_nota, status_em, origem)'\n    + ' SELECT t.rf, n.nIdNf, n.cNumNFSe, n.cNumOs, n.emp, t.status_nota, NOW(), '\n    + \"'BACKFILL'\"\n    + ' FROM ' + t\n    + ' JOIN ' + TB_NF + ' n ON n.cNumOs = t.cNumOs';\n\n  saida.push({\n    json: {\n      lote: saida.length + 1,\n      pares_no_lote: bloco.length,\n      sql: d.DRY_RUN ? sql_diag : sql_insert,\n      modo: d.DRY_RUN ? 'DIAGNOSTICO' : 'GRAVACAO',\n    },\n  });\n}\n\nconsole.log(saida.length + ' lote(s) de ' + LOTE + ' para ' + pares.length + ' par(es).');\nreturn saida;\n"
+      },
+      "id": "sql",
+      "name": "Montar_SQL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -20,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.modo }}",
+              "rightValue": "DIAGNOSTICO",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "iff",
+      "name": "Dry_run?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}",
+        "options": {}
+      },
+      "id": "dbd",
+      "name": "Diagnostico",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        460,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================================\n// Consolida o diagnostico dos lotes (DRY RUN -- nada foi gravado).\n// Mode: Run Once for All Items\n// =====================================================================\n\nconst linhas = $input.all().map((i) => i.json);\nconst varre = $('Varre_OS_Omie').first().json;\n\nconst soma = (campo) => linhas.reduce(function (a, l) {\n  const v = Number(l[campo]);\n  return a + (isFinite(v) ? v : 0);\n}, 0);\n\nconst com_nota = soma('com_nota');\nconst sem_nota = soma('sem_nota');\nconst invisiveis = soma('rf_invisivel_hoje');\nconst ja_tem = soma('ja_na_rf_nota');\nconst canceladas = soma('canceladas');\n\n// junta a lista dos casos sem nota vinda de todos os lotes\nconst quais = linhas\n  .map(function (l) { return l.quais_sem_nota; })\n  .filter(Boolean)\n  .join(' | ')\n  .split(' | ')\n  .filter(Boolean);\n\nreturn [{\n  json: {\n    modo: 'DRY RUN - nada foi gravado na rf_nota',\n    modo_varredura: varre.modo,\n    varredura: varre.parcial\n      ? 'PARCIAL - parou na pagina ' + varre.proxima_pagina + ' de ' + varre.total_paginas\n        + '. Rode de novo com PAGINA_INICIAL = ' + varre.proxima_pagina + '.'\n      : 'COMPLETA (' + varre.total_paginas + ' pagina(s))',\n    motivo_parada: varre.motivo_parada || null,\n    chamadas_api: varre.chamadas_api,\n\n    os_lidas: varre.os_lidas,\n    os_sem_rf: varre.os_sem_rf,\n    os_com_rf: (varre.pares || []).length,\n    rf_divergente_entre_campos: varre.qtd_divergentes,\n    exemplos_divergentes: varre.divergentes,\n\n    vinculos_que_seriam_criados: com_nota - ja_tem,\n    ja_existentes_na_rf_nota: ja_tem,\n    sem_nota_correspondente: sem_nota,\n    quais_sem_nota: quais,\n    sobre_os_sem_nota:\n      'Cada item e \"RF@OS\". Confira o cFaturada da OS na Omie: se for \"N\", a OS '\n      + 'NUNCA foi faturada -- nao existe nota, nada foi cobrado, e o RF DEVE seguir '\n      + 'liberado (comportamento correto, nao buraco). Se for \"S\" e ainda assim nao ha '\n      + 'nota na NF, ai vale investigar: a nota pode ter sido cancelada antes do fluxo '\n      + 'diario passar, e nesse caso o RF esta desprotegido.',\n    marcados_como_cancelada: canceladas,\n\n    RF_INVISIVEIS_HOJE: invisiveis,\n    o_que_isso_significa:\n      invisiveis + ' RF(s) tem nota na Omie mas NAO estao em rfs_faturados: hoje '\n      + 'passariam batido no verificador e poderiam ser refaturados. E o buraco '\n      + 'que o backfill fecha.',\n\n    proximo_passo: varre.parcial\n      ? 'Varredura parcial: complete antes de gravar, senao o backfill fica incompleto.'\n      : 'Confira os numeros e vire DRY_RUN = false no no Config para gravar.',\n  },\n}];\n"
+      },
+      "id": "rel",
+      "name": "Relatorio_DryRun",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}",
+        "options": {
+          "detailedOutput": true
+        }
+      },
+      "id": "dbg",
+      "name": "Gravar_Vinculos",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        460,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Resumo da GRAVACAO.\n// Lembrete: o no MySQL do n8n so' devolve affectedRows se a opcao\n// \"Output Query Execution Details\" estiver ligada no no Gravar_Vinculos.\nconst itens = $input.all().map((i) => i.json);\nconst varre = $('Varre_OS_Omie').first().json;\n\nlet afetadas = null;\nfor (const it of itens) {\n  const n = it && it.data && it.data.affectedRows;\n  if (typeof n === 'number') afetadas = (afetadas || 0) + n;\n}\n\nreturn [{\n  json: {\n    modo: 'GRAVACAO concluida',\n    lotes_executados: itens.length,\n    pares_enviados: (varre.pares || []).length,\n    vinculos_gravados: afetadas === null\n      ? 'ligue \"Output Query Execution Details\" no no Gravar_Vinculos para ver o numero'\n      : afetadas,\n    varredura: varre.parcial ? 'PARCIAL - faltou da pagina ' + varre.proxima_pagina + ' em diante' : 'COMPLETA',\n    conferir: 'SELECT origem, COUNT(*) FROM kvm4_db.rf_nota GROUP BY origem;',\n  },\n}];\n"
+      },
+      "id": "fim",
+      "name": "Resumo_Gravacao",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        140
+      ]
+    }
+  ],
+  "connections": {
+    "Executar manualmente": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "De hora em hora": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Varre_OS_Omie",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Varre_OS_Omie": {
+      "main": [
+        [
+          {
+            "node": "Montar_SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar_SQL": {
+      "main": [
+        [
+          {
+            "node": "Dry_run?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dry_run?": {
+      "main": [
+        [
+          {
+            "node": "Diagnostico",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gravar_Vinculos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Diagnostico": {
+      "main": [
+        [
+          {
+            "node": "Relatorio_DryRun",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gravar_Vinculos": {
+      "main": [
+        [
+          {
+            "node": "Resumo_Gravacao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {},
+  "tags": []
+}

@@ -1,0 +1,506 @@
+/* ============================================================
+   TEMA SILLION para os apps Streamlit — 11/08/2026
+   Referência: automacoes.nousbms.com (portal de automações)
+
+   COMO FUNCIONA
+   Este arquivo é carregado DEPOIS do main.css e apenas REDEFINE os
+   valores das variáveis que o main.css já usa. Nenhuma regra de layout
+   é reescrita — por isso a estrutura, os espaçamentos e o comportamento
+   continuam exatamente os mesmos.
+
+   Para reverter: pare de carregar este arquivo. O app volta ao visual
+   anterior sem nenhuma outra alteração.
+
+   O QUE MUDA
+   - índigo/roxo (#6366F1 / #8B5CF6)  ->  vermelho Sillion (#B41B25)
+   - sombras coloridas de 24–48px de desfoque -> sombras discretas
+   - cantos de até 20px -> contidos
+   - fonte do sistema -> Roboto (a mesma do portal)
+   - ganha modo escuro
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;800&display=swap');
+
+:root {
+    /* ---- paleta do portal, nomes originais (para conferência lado a lado) ---- */
+    --sl-rail-top: #2B2B2E;
+    --sl-rail-bot: #19191B;
+    --sl-accent:   #B41B25;
+    --sl-accent-2: #8E1219;
+    --sl-fundo:    #F4F4F5;
+    --sl-papel:    #FFFFFF;
+    --sl-linha:    #E4E4E7;
+    --sl-texto:    #232326;
+    --sl-fraco:    #71717A;
+    --sl-marca:    #B41B25;
+    --sl-tag-bg:   #F9E9EA;
+    --sl-tag-fg:   #B41B25;
+
+    /* ---- remapeamento: as variáveis que o main.css consome ---- */
+    --cor-primaria:       var(--sl-accent);
+    --cor-primaria-hover: var(--sl-accent-2);
+    --cor-acento:         var(--sl-accent);
+    --cor-acento-hover:   var(--sl-accent-2);
+    --cor-link:           var(--sl-accent);
+
+    --cor-texto:          var(--sl-texto);
+    --cor-texto-muted:    var(--sl-fraco);
+    --cor-texto-claro:    #F4F4F5;
+
+    --cor-fundo:          var(--sl-fundo);
+    --cor-fundo-card:     var(--sl-papel);
+    --cor-fundo-sutil:    var(--sl-fundo);
+
+    --cor-borda:          var(--sl-linha);
+    --cor-borda-hover:    #D4D4D8;
+
+    /* hero: o brilho roxo era o que mais destoava — vira um véu vermelho sutil */
+    --hero-glow:         rgba(180, 27, 37, 0.10);
+    --hero-badge-bg:     var(--sl-tag-bg);
+    --hero-badge-border: #E3B7BA;
+    --hero-badge-text:   var(--sl-tag-fg);
+
+    /* Fundo do hero: era um gradiente azul-marinho (#0F172A -> #1a2744 ->
+       #0F3460), que não existe em lugar nenhum do portal. Passa a ser o MESMO
+       grafite da topbar e do rail (--rail-top -> --rail-bot), que é o que dá
+       a leitura de "mesma família" quando o app abre dentro do iframe.
+       Não muda no escuro — o rail do portal também não muda. */
+    --hero-bg-1: var(--sl-rail-top);
+    --hero-bg-2: #232326;
+    --hero-bg-3: var(--sl-rail-bot);
+
+    /* texto secundário SOBRE o grafite (não segue o tema, o fundo é fixo).
+       #ADB5BD é o mesmo tom que o portal usa nos subtítulos da topbar. */
+    --cor-texto-claro-2: #ADB5BD;
+
+    /* cantos contidos: 20px em cartão grande é o que dá cara de app de consumo */
+    --raio-sm:   6px;
+    --raio-md:   10px;
+    --raio-lg:   14px;
+    --raio-pill: 99px;
+
+    /* sombras: sem cor e sem desfoque exagerado.
+       Antes: --sombra-btn era 0 8px 24px rgba(99,102,241,.35) — brilho roxo. */
+    --sombra-card:  0 1px 2px rgba(0, 0, 0, 0.05);
+    --sombra-hover: 0 6px 18px rgba(0, 0, 0, 0.08);
+    --sombra-btn:   0 2px 6px rgba(0, 0, 0, 0.12);
+    --sombra-icon:  0 2px 6px rgba(0, 0, 0, 0.10);
+
+    /* tokens dos blocos de RF seguem a mesma paleta */
+    --sl-surface: var(--sl-papel);
+    --sl-border:  var(--sl-linha);
+    --sl-border2: #D4D4D8;
+    --sl-fill:    var(--sl-fundo);
+    --sl-fill2:   #EDEDEF;
+    --sl-ink:     var(--sl-texto);
+    --sl-text2:   #52525B;
+    --sl-text3:   var(--sl-fraco);
+    --sl-muted:   #A1A1AA;
+}
+
+/* ------------------------------------------------------------
+   MODO ESCURO
+   Dois gatilhos, de propósito:
+     html.dark                        -> se algo marcar a página (o portal usa
+                                         essa classe com localStorage
+                                         'portal-tema')
+     @media (prefers-color-scheme)    -> segue a preferência do sistema, que é
+                                         a opção que funciona sem JavaScript
+   O Streamlit não executa <script> injetado por markdown, então a preferência
+   do sistema é o caminho confiável para alternar sem widget novo.
+   ------------------------------------------------------------ */
+html.dark {
+    --sl-fundo:  #131315;
+    --sl-papel:  #202023;
+    --sl-linha:  #333338;
+    --sl-texto:  #F4F4F5;
+    --sl-fraco:  #A1A1AA;
+    --sl-marca:  #E8858C;
+    --sl-tag-bg: rgba(180, 27, 37, 0.22);
+    --sl-tag-fg: #F2A9AE;
+
+    /* vermelho puro sobre fundo escuro perde contraste: clareia para texto/link */
+    --cor-primaria:       #C93540;
+    --cor-primaria-hover: #A32530;
+    --cor-acento:         #C93540;
+    --cor-acento-hover:   #A32530;
+    --cor-link:           var(--sl-marca);
+
+    --cor-borda-hover: #52525B;
+    --hero-glow:       rgba(201, 53, 64, 0.16);
+    --hero-badge-border: rgba(180, 27, 37, 0.55);
+
+    --sombra-card:  0 1px 2px rgba(0, 0, 0, 0.40);
+    --sombra-hover: 0 8px 22px rgba(0, 0, 0, 0.45);
+    --sombra-btn:   0 2px 6px rgba(0, 0, 0, 0.45);
+    --sombra-icon:  0 2px 6px rgba(0, 0, 0, 0.40);
+
+    --sl-border2: #52525B;
+    --sl-fill2:   #2B2B2E;
+    --sl-text2:   #B9BDC2;
+    --sl-muted:   #8A8A93;
+
+    /* estados dos blocos de RF no escuro (mesma escala do CRUD) */
+    --sl-danger-soft2: #2A1719;
+    --sl-danger-soft:  #391D1F;
+    --sl-danger-bd2:   #572B2B;
+    --sl-danger-text:  #F0A8A8;
+    --sl-danger:       #E5484D;
+    --sl-danger2:      #D03B3B;
+    --sl-warn-soft:    #332B14;
+    --sl-warn-text2:   #D9A05B;
+    --sl-warn-text:    #E0A64B;
+    --sl-warn-ico:     #F59E0B;
+    --sl-ok-soft:      #142E26;
+    --sl-ok-soft2:     #122923;
+    --sl-ok-bd:        #2B5C4A;
+    --sl-ok-text:      #8FE3C0;
+    --sl-ok:           #35B58B;
+    --sl-ok-ico:       #2FBE8F;
+
+    color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not(.claro) {
+        --sl-fundo:  #131315;
+        --sl-papel:  #202023;
+        --sl-linha:  #333338;
+        --sl-texto:  #F4F4F5;
+        --sl-fraco:  #A1A1AA;
+        --sl-marca:  #E8858C;
+        --sl-tag-bg: rgba(180, 27, 37, 0.22);
+        --sl-tag-fg: #F2A9AE;
+
+        --cor-primaria:       #C93540;
+        --cor-primaria-hover: #A32530;
+        --cor-acento:         #C93540;
+        --cor-acento-hover:   #A32530;
+        --cor-link:           var(--sl-marca);
+
+        --cor-borda-hover: #52525B;
+        --hero-glow:       rgba(201, 53, 64, 0.16);
+        --hero-badge-border: rgba(180, 27, 37, 0.55);
+
+        --sombra-card:  0 1px 2px rgba(0, 0, 0, 0.40);
+        --sombra-hover: 0 8px 22px rgba(0, 0, 0, 0.45);
+        --sombra-btn:   0 2px 6px rgba(0, 0, 0, 0.45);
+        --sombra-icon:  0 2px 6px rgba(0, 0, 0, 0.40);
+
+        --sl-border2: #52525B;
+        --sl-fill2:   #2B2B2E;
+        --sl-text2:   #B9BDC2;
+        --sl-muted:   #8A8A93;
+
+        --sl-danger-soft2: #2A1719;
+        --sl-danger-soft:  #391D1F;
+        --sl-danger-bd2:   #572B2B;
+        --sl-danger-text:  #F0A8A8;
+        --sl-danger:       #E5484D;
+        --sl-danger2:      #D03B3B;
+        --sl-warn-soft:    #332B14;
+        --sl-warn-text2:   #D9A05B;
+        --sl-warn-text:    #E0A64B;
+        --sl-warn-ico:     #F59E0B;
+        --sl-ok-soft:      #142E26;
+        --sl-ok-soft2:     #122923;
+        --sl-ok-bd:        #2B5C4A;
+        --sl-ok-text:      #8FE3C0;
+        --sl-ok:           #35B58B;
+        --sl-ok-ico:       #2FBE8F;
+
+        color-scheme: dark;
+    }
+}
+
+/* ------------------------------------------------------------
+   Tipografia e chrome do Streamlit
+   ------------------------------------------------------------ */
+/* A fonte é aplicada só na raiz e HERDADA.
+   NÃO listar `span` aqui: o Streamlit desenha ícones com Material Symbols por
+   LIGATURA — o DOM contém a palavra ("upload") dentro de um span e a fonte a
+   converte no glifo. Forçar Roboto no span quebra a ligatura e o usuário vê a
+   palavra crua ao lado do rótulo ("uploadUpload" no botão do uploader).
+   O `font` do config.toml já cuida dos widgets sem esse efeito colateral. */
+html, body, .stApp {
+    font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* cinto de segurança: se alguma regra herdada tentar mudar a fonte do ícone,
+   estes seletores devolvem a fonte de ligatura */
+.stApp :where([class*="material-symbols"], [class*="material-icons"],
+              [data-testid*="Icon"] > span) {
+    font-family: 'Material Symbols Rounded', 'Material Symbols Outlined',
+                 'Material Icons' !important;
+}
+
+.stApp { background: var(--cor-fundo); color: var(--cor-texto); }
+
+/* widgets nativos do Streamlit não herdam as variáveis do app sozinhos */
+.stApp :where(input, select, textarea) {
+    background-color: var(--cor-fundo-card);
+    color: var(--cor-texto);
+    border-color: var(--cor-borda);
+}
+.stApp :where(input, textarea)::placeholder { color: var(--sl-muted); }
+
+/* tabelas e data_editor acompanham o papel/linha do tema */
+.stApp :where([data-testid="stDataFrame"], [data-testid="stDataEditor"]) {
+    background: var(--cor-fundo-card);
+    border: 1px solid var(--cor-borda);
+    border-radius: var(--raio-sm);
+}
+
+/* ============================================================
+   DENSIDADE — referência: painel "Equipamentos em Depósito" (12/08/2026)
+
+   O que essa referência faz e eu não estava fazendo:
+     . painel visível, mas de contraste BAIXO (escuro sobre escuro).
+       Antes eu tinha deixado tudo transparente, o que é achatado demais —
+       o problema original era o branco puro do Streamlit, não o painel.
+     . rótulo ACIMA do número, minúsculo, maiúsculo, com espaçamento
+     . número grande e pesado; a cor fica no NÚMERO, não na moldura
+     . espaçamento apertado: é instrumento de leitura, não página de conteúdo
+     . nenhuma sombra, nenhuma barra lateral grossa
+   ============================================================ */
+
+/* --- mata os brilhos coloridos dos botões e do uploader --- */
+[data-testid="stFileUploader"] button,
+[data-testid="stFileUploader"] button:hover,
+html body .stButton > button[kind="primary"],
+html body .stButton > button[kind="primary"]:hover,
+html body button[data-testid="stBaseButton-primary"],
+html body button[data-testid="stBaseButton-primary"]:hover,
+html body .stButton > button[kind="secondary"],
+html body button[data-testid="stBaseButton-secondary"] {
+    box-shadow: none !important;
+}
+html body .stButton > button[kind="primary"]:hover,
+html body button[data-testid="stBaseButton-primary"]:hover {
+    filter: brightness(0.94);
+    transform: none !important;
+}
+
+/* --- cartão do arquivo: sem halo, sem elevação --- */
+.file-preview,
+.file-preview:hover { box-shadow: none !important; transform: none !important; }
+.file-preview-icon  { box-shadow: none !important; }
+
+/* --- hero: o véu radial era o que dava aparência de "3D" --- */
+.hero::before, .hero::after { opacity: 0.30; }
+
+/* ------------------------------------------------------------
+   FAIXA DE INDICADORES
+   Rótulo em cima, número embaixo — a ordem da referência. A cor de
+   estado vai no número; a moldura fica neutra em todos os casos.
+   ------------------------------------------------------------ */
+.rf-resumo { gap: 10px; margin: 2px 0 14px; }
+
+.rf-card {
+    background: var(--sl-papel, #FFFFFF);
+    border: 1px solid var(--sl-border, #E4E4E7);
+    border-left: 1px solid var(--sl-border, #E4E4E7);   /* sem barra grossa */
+    border-radius: 6px;
+    padding: 10px 13px;
+    box-shadow: none;
+    display: flex;
+    flex-direction: column-reverse;   /* rótulo acima do número */
+    gap: 3px;
+}
+.rf-card .rf-num {
+    font-size: 27px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.6px;
+}
+.rf-card .rf-rot {
+    margin: 0;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.9px;
+    text-transform: uppercase;
+    color: var(--sl-text3, #71717A);
+}
+/* a cor mora no número */
+.rf-card.ok, .rf-card.bloq, .rf-card.aviso {
+    background: var(--sl-papel, #FFFFFF);
+    border-color: var(--sl-border, #E4E4E7);
+}
+.rf-card.ok    .rf-num { color: var(--sl-ok, #047857); }
+.rf-card.bloq  .rf-num { color: var(--sl-danger, #DC2626); }
+.rf-card.aviso .rf-num { color: var(--sl-warn-text, #B45309); }
+
+/* ------------------------------------------------------------
+   BLOCOS — painel de contraste baixo
+   ------------------------------------------------------------ */
+.rf-bloco {
+    background: var(--sl-papel, #FFFFFF);
+    border: 1px solid var(--sl-border, #E4E4E7);
+    border-left: 2px solid var(--sl-danger, #DC2626);
+    border-radius: 6px;
+    box-shadow: none;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+}
+.rf-bloco.aprov { border-left-color: var(--sl-ok, #047857); }
+
+.rf-bloco h4 {
+    margin: 0 0 3px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--sl-ink, #232326);
+}
+.rf-bloco p.rf-exp {
+    margin: 0 0 10px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--sl-text3, #71717A);
+}
+
+/* ------------------------------------------------------------
+   TABELA — densa, sem fundo próprio (já está dentro do painel)
+   ------------------------------------------------------------ */
+.rf-tab { background: transparent; font-size: 12.5px; }
+.rf-tab thead th {
+    background: transparent;
+    border-bottom: 1px solid var(--sl-border, #E4E4E7);
+    padding: 5px 10px 6px;
+    font-size: 9.5px;
+    letter-spacing: 0.8px;
+}
+.rf-tab tbody td { padding: 6px 10px; }
+.rf-tab tbody tr:hover { background: var(--sl-fill, #F4F4F5); }
+.rf-tab .rf-motivo { font-size: 11.5px; }
+
+/* selos planos: texto colorido, borda fina, compactos */
+.rf-selo {
+    background: transparent !important;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    font-weight: 700;
+    font-size: 9.5px;
+    letter-spacing: 0.5px;
+    padding: 0 5px;
+}
+.rf-selo.faturada  { color: var(--sl-text3, #71717A); }
+.rf-selo.cancelada { color: var(--sl-danger, #DC2626); }
+.rf-selo.subst     { color: var(--sl-warn-text, #B45309); }
+.rf-selo.novo      { color: var(--sl-ok, #047857); }
+.rf-selo.reenvio   { color: var(--sl-warn-text, #B45309); }
+
+.rf-scroll { max-height: 300px; }
+
+/* ------------------------------------------------------------
+   TABELA DE LIBERADOS montada com st.columns
+   Objetivo: mesma leitura da tabela de bloqueados (HTML), mas com o
+   checkbox sendo um widget real do Streamlit na primeira coluna.
+
+   ESCOPO: `.st-key-tabliberados` — chave FIXA e exclusiva do container.
+   Antes eu usava [class*="st-key-envio_"], que também casava com as chaves
+   dos botões (envio_..._all) e dos checkboxes (envio_..._chk_2): o painel
+   ganhava borda e fundo em cima dos botões, e as alturas saíam diferentes.
+   ------------------------------------------------------------ */
+
+/* célula: mesma tipografia das células da tabela de bloqueados */
+.rf-cel {
+    /* MESMO padding do `.rf-tab tbody td` da tabela de bloqueados: é o que
+       faz as duas tabelas terem a mesma altura de linha e o mesmo respiro. */
+    font-size: 12.5px;
+    line-height: 1.3;
+    color: var(--sl-ink, #232326);
+    padding: 6px 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.rf-cel.rf-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-weight: 600;
+}
+.rf-cel.rf-motivo { color: var(--sl-text3, #71717A); font-size: 11.5px; }
+
+/* cabeçalho: igual ao <th> da outra tabela */
+.rf-cab {
+    /* MESMO padding do `.rf-tab thead th` */
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--sl-text3, #71717A);
+    padding: 5px 10px 6px;
+    white-space: nowrap;
+}
+
+/* a caixa de rolagem fecha o painel iniciado pelo cabeçalho injetado */
+.st-key-tabliberados {
+    border: 1px solid var(--sl-border, #E4E4E7);
+    border-left: 2px solid var(--sl-ok, #047857);
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    padding: 4px 12px;
+    background: var(--sl-papel, #FFFFFF);
+}
+
+/* cada st.columns vira uma linha de tabela */
+.st-key-tabliberados [data-testid="stHorizontalBlock"] {
+    border-bottom: 1px solid var(--sl-border, #E4E4E7);
+    padding: 0;
+    margin: 0;
+    gap: 0;            /* o respiro vem do padding da célula, como num <td> */
+    align-items: center;
+    min-height: 0;
+}
+.st-key-tabliberados [data-testid="stHorizontalBlock"]:hover {
+    background: var(--sl-fill, #F4F4F5);
+}
+/* primeira faixa = cabeçalho: sem hover, borda mais marcada */
+.st-key-tabliberados [data-testid="stHorizontalBlock"]:first-of-type {
+    border-bottom-color: var(--sl-border2, #D4D4D8);
+}
+.st-key-tabliberados [data-testid="stHorizontalBlock"]:first-of-type:hover {
+    background: transparent;
+}
+/* O gap de 16px que separava as linhas mora no PRÓPRIO stVerticalBlock que
+   carrega a classe (medido no DOM em 12/08/2026: gap do escopo = 16px, vão
+   entre linhas = 16px; na tabela de referência = 0px). Seletor descendente
+   não alcança o próprio elemento — por isso o próprio escopo entra aqui. */
+.st-key-tabliberados,
+.st-key-tabliberados [data-testid="stVerticalBlock"],
+.st-key-tabliberados [data-testid="stLayoutWrapper"] { gap: 0 !important; }
+
+/* checkbox compacto: o padrão do Streamlit é alto para linha de tabela */
+.st-key-tabliberados [data-testid="stCheckbox"] {
+    margin: 0; min-height: 0; padding: 6px 0 6px 10px;
+}
+.st-key-tabliberados [data-testid="stCheckbox"] > label { margin: 0; padding: 0; }
+.st-key-tabliberados [data-testid="stCheckbox"] label > span:first-child {
+    transform: scale(0.85);
+    transform-origin: left center;
+}
+
+/* botão de tela cheia que o container de altura fixa mostra no hover */
+.st-key-tabliberados [data-testid="StyledFullScreenButton"] { display: none; }
+
+/* os dois botões acima da tabela: mesma altura, sem quebra de linha */
+[class*="st-key-envio_"] button { white-space: nowrap; }
+
+/* ------------------------------------------------------------
+   RF REPETIDO no arquivo (12/08/2026)
+   O numero em si fica marcado: fundo ambar suave, texto ambar forte,
+   com o selo REPETIDO colado. Funciona no claro e no escuro pelos
+   mesmos tokens usados nos avisos.
+   ------------------------------------------------------------ */
+.rf-num-rep {
+    background: var(--sl-warn-soft, #FEF3C7);
+    color: var(--sl-warn-text2, #92400E);
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-right: 6px;
+}
+.rf-selo.repetido {
+    color: var(--sl-warn-text, #B45309);
+    vertical-align: 1px;
+}

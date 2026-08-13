@@ -1,0 +1,161 @@
+{
+  "name": "VALE_Promove_RF_OS",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trg",
+      "name": "Executar manualmente",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -620,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "sch",
+      "name": "A cada 15 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -620,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT IGNORE INTO kvm4_db.rf_nota\n  (rf, nIdNf, cNumNFSe, cNumOs, emp, status_nota, status_em, origem)\nSELECT o.rf, n.nIdNf, n.cNumNFSe, n.cNumOs, n.emp, NULL, NULL, 'ESTEIRA'\nFROM kvm4_db.rf_os o\nJOIN kvm4_db.NF n ON n.cNumOs = o.cNumOs\nWHERE o.promovido_em IS NULL",
+        "options": {
+          "detailedOutput": true
+        }
+      },
+      "id": "ins",
+      "name": "Promove para rf_nota",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        -380,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE kvm4_db.rf_os o\nJOIN kvm4_db.NF n ON n.cNumOs = o.cNumOs\nSET o.promovido_em = NOW()\nWHERE o.promovido_em IS NULL",
+        "options": {
+          "detailedOutput": true
+        }
+      },
+      "id": "upd",
+      "name": "Marca como promovido",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        -140,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  (SELECT COUNT(*) FROM kvm4_db.rf_os) AS rf_os_total,\n  (SELECT COUNT(*) FROM kvm4_db.rf_os WHERE promovido_em IS NULL) AS ainda_sem_nota,\n  (SELECT COUNT(*) FROM kvm4_db.rf_os WHERE promovido_em IS NOT NULL) AS promovidos,\n  (SELECT COUNT(*) FROM kvm4_db.rf_nota WHERE origem='ESTEIRA') AS vinculos_da_esteira,\n  (SELECT COUNT(*) FROM kvm4_db.rf_nota) AS rf_nota_total,\n  (SELECT COUNT(*) FROM kvm4_db.rf_os o WHERE o.promovido_em IS NULL\n     AND o.criado_em < NOW() - INTERVAL 3 DAY) AS pendentes_ha_mais_de_3_dias",
+        "options": {}
+      },
+      "id": "res",
+      "name": "Contagens",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================================\n// Resumo da promocao. NENHUMA chamada de API foi feita neste fluxo --\n// e' tudo JOIN entre rf_os e NF, dentro do banco.\n// =====================================================================\n\nconst r = $input.first().json || {};\n\nconst antigos = Number(r.pendentes_ha_mais_de_3_dias || 0);\n\nreturn [{\n  json: {\n    custo_api: 'ZERO - fluxo 100% SQL',\n    rf_os_total: Number(r.rf_os_total || 0),\n    promovidos: Number(r.promovidos || 0),\n    ainda_sem_nota: Number(r.ainda_sem_nota || 0),\n    vinculos_da_esteira: Number(r.vinculos_da_esteira || 0),\n    rf_nota_total: Number(r.rf_nota_total || 0),\n\n    pendentes_ha_mais_de_3_dias: antigos,\n    alerta: antigos > 0\n      ? antigos + ' RF(s) esperam nota ha mais de 3 dias. Ou a OS nao foi faturada '\n        + '(cFaturada = N, e ai esta correto), ou a nota foi cancelada antes do fluxo '\n        + 'diario passar (a nota nunca entra na NF quando cancelada) -- nesse segundo '\n        + 'caso o RF esta desprotegido. Conferir na Omie.'\n      : 'nenhuma pendencia antiga',\n\n    conferir:\n      \"SELECT rf, cNumOs, criado_em FROM kvm4_db.rf_os WHERE promovido_em IS NULL ORDER BY criado_em\",\n  },\n}];\n"
+      },
+      "id": "rel",
+      "name": "Resumo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        340,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Executar manualmente": {
+      "main": [
+        [
+          {
+            "node": "Promove para rf_nota",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A cada 15 minutos": {
+      "main": [
+        [
+          {
+            "node": "Promove para rf_nota",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Promove para rf_nota": {
+      "main": [
+        [
+          {
+            "node": "Marca como promovido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marca como promovido": {
+      "main": [
+        [
+          {
+            "node": "Contagens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contagens": {
+      "main": [
+        [
+          {
+            "node": "Resumo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {},
+  "tags": []
+}

@@ -1,14 +1,79 @@
 # ============================================================
-# Tema do Streamlit — Sillion (navy + ciano)
-# Alinhado com a identidade visual do portal Omie
+# Tema do Streamlit — identidade Sillion (11/08/2026)
+# Referência: automacoes.nousbms.com (portal de automações)
+#
+# POR QUE ISSO IMPORTA MAIS QUE O CSS
+# O Streamlit pinta os widgets dele (input, uploader, select, tabela) com as
+# cores DESTA seção, não com o CSS da página. O tema anterior fixava
+# backgroundColor = "#FFFFFF", então os widgets ficavam brancos enquanto o CSS
+# escurecia o resto — era daí que vinha o contraste branco exagerado.
+#
+# Definindo [theme] e [theme.dark], o seletor nativo
+# (menu ⋮ → Settings → Appearance) passa a alternar entre os dois usando a
+# paleta da Sillion. A opção claro/escuro é nativa, sem widget novo na tela.
+#
+# `base` NÃO é definido de propósito: fixá-lo tiraria a escolha do usuário.
 # ============================================================
 
 [theme]
-primaryColor = "#0F2A33"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F3F5F7"
-textColor = "#1A2D38"
-font = "sans serif"
+# fundo levemente cinza (--fundo do portal), não branco puro:
+# é o que tira o "estala na vista" e faz os cartões brancos se destacarem
+backgroundColor          = "#F4F4F5"
+secondaryBackgroundColor = "#FFFFFF"
+textColor                = "#232326"
+primaryColor             = "#B41B25"
+linkColor                = "#B41B25"
+borderColor              = "#E4E4E7"
+font                     = "Roboto"
+headingFont              = "Roboto"
+# cantos contidos: era o principal sinal de informalidade
+baseRadius               = "small"
+buttonRadius             = "small"
+dataframeBorderColor     = "#E4E4E7"
+dataframeHeaderBackgroundColor = "#F4F4F5"
+
+# cores semânticas: st.error / st.warning / st.success passam a seguir a paleta
+redColor            = "#DC2626"
+redBackgroundColor  = "#FEE2E2"
+redTextColor        = "#991B1B"
+greenColor          = "#047857"
+greenBackgroundColor= "#D1FAE5"
+greenTextColor      = "#065F46"
+orangeColor         = "#B45309"
+orangeBackgroundColor = "#FEF3C7"
+orangeTextColor     = "#92400E"
+grayColor           = "#71717A"
+grayBackgroundColor = "#F4F4F5"
+grayTextColor       = "#52525B"
+
+[theme.dark]
+# grafite do portal (--fundo / --papel / --linha do html.dark)
+backgroundColor          = "#131315"
+secondaryBackgroundColor = "#202023"
+textColor                = "#F4F4F5"
+# vermelho puro perde contraste sobre grafite: clareia
+primaryColor             = "#C93540"
+linkColor                = "#E8858C"
+borderColor              = "#333338"
+font                     = "Roboto"
+headingFont              = "Roboto"
+baseRadius               = "small"
+buttonRadius             = "small"
+dataframeBorderColor     = "#333338"
+dataframeHeaderBackgroundColor = "#202023"
+
+redColor            = "#E5484D"
+redBackgroundColor  = "#391D1F"
+redTextColor        = "#F0A8A8"
+greenColor          = "#35B58B"
+greenBackgroundColor= "#142E26"
+greenTextColor      = "#8FE3C0"
+orangeColor         = "#E0A64B"
+orangeBackgroundColor = "#332B14"
+orangeTextColor     = "#D9A05B"
+grayColor           = "#A1A1AA"
+grayBackgroundColor = "#202023"
+grayTextColor       = "#B9BDC2"
 
 [server]
 maxUploadSize = 200

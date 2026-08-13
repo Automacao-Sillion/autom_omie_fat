@@ -1,0 +1,100 @@
+{
+  "name": "VALE_Sonda_Onde_Esta_o_RF",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trg",
+      "name": "Executar",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "k",
+              "name": "OMIE_APP_KEY",
+              "value": "COLE_A_APP_KEY_DA_SILLION",
+              "type": "string"
+            },
+            {
+              "id": "s",
+              "name": "OMIE_APP_SECRET",
+              "value": "COLE_O_APP_SECRET_DA_SILLION",
+              "type": "string"
+            },
+            {
+              "id": "n",
+              "name": "NIDNF",
+              "value": "2863061477",
+              "type": "string"
+            },
+            {
+              "id": "o",
+              "name": "CNUMOS",
+              "value": "000000000005584",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cfg",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================================\n// SONDA: descobre em que campo da Omie o RF esta gravado.\n// Mode: Run Once for All Items · CUSTO: 2 chamadas de API. So' LEITURA.\n//\n// Como funciona: chama ObterNFSe (pela nota) e ConsultarOS (pela OS), e\n// varre as duas respostas inteiras procurando o PADRAO de um RF da Vale\n// (10 digitos comecando em 62, ex. 6203185520). Devolve o CAMINHO no JSON\n// onde encontrou -- ou seja, ela se autodescobre, ninguem precisa saber o\n// nome do campo antes.\n// =====================================================================\n\nconst cfg       = $input.first().json;\nconst appKey    = cfg.OMIE_APP_KEY;\nconst appSecret = cfg.OMIE_APP_SECRET;\nconst nIdNf     = Number(cfg.NIDNF);\nconst cNumOS    = String(cfg.CNUMOS || '').trim();\n\nif (!appKey || !appSecret || String(appKey).indexOf('COLE_') === 0) {\n  throw new Error('Preencha OMIE_APP_KEY e OMIE_APP_SECRET no no Config.');\n}\n\n// Um RF da Vale: comeca em 62 e tem 10 digitos (o normal).\n// Aceita 8 a 12 digitos depois do \"62\" porque o banco tem casos de 11 e 12\n// digitos (conferido em 10/08/2026: 799 RFs com 10, 2 com 11, 4 com 12 --\n// os maiores sao artefato de teste, alguem acrescentou digito para o RF\n// \"virar novo\"). Um padrao de 10 exatos deixaria esses de fora.\nconst PADRAO_RF = /\\b62\\d{8,12}\\b/g;\n\n// Nomes de campo que costumam guardar texto livre -- listados mesmo sem\n// casar o padrao, porque o RF pode estar formatado de outro jeito.\nconst NOMES_TEXTO = /obs|hist|anot|inform|complement|descr|coment/i;\n\nconst chamar = (opcoes) => this.helpers.httpRequest(opcoes);\n\nfunction motivoOmie(e) {\n  const cands = [\n    e && e.response && e.response.data,\n    e && e.response && e.response.body,\n    e && e.cause && e.cause.response && e.cause.response.data,\n    e && e.error, e && e.description,\n  ];\n  for (const c of cands) {\n    if (!c) continue;\n    let o = c;\n    if (typeof o === 'string') {\n      try { o = JSON.parse(o); } catch (_) { return o.slice(0, 300); }\n    }\n    if (o && (o.faultstring || o.faultcode)) {\n      return String(o.faultcode || '') + ' ' + String(o.faultstring || '');\n    }\n    try { return JSON.stringify(o).slice(0, 300); } catch (_) { /* segue */ }\n  }\n  return e && e.message ? String(e.message) : 'sem detalhe';\n}\n\nasync function tentar(nome, url, corpo) {\n  try {\n    const r = await chamar({\n      method: 'POST', url: url,\n      headers: { 'Content-Type': 'application/json' },\n      body: corpo, json: true,\n    });\n    return { nome: nome, ok: true, resposta: r };\n  } catch (e) {\n    return { nome: nome, ok: false, erro: motivoOmie(e) };\n  }\n}\n\n// varredura recursiva: registra caminho + valor onde o padrao casa\nfunction varrer(no, caminho, achados, textos) {\n  if (no === null || no === undefined) return;\n\n  if (typeof no === 'string' || typeof no === 'number') {\n    const s = String(no);\n    const casou = s.match(PADRAO_RF);\n    if (casou) {\n      achados.push({\n        caminho: caminho,\n        valor: s.length > 300 ? s.slice(0, 300) + '...' : s,\n        rfs: [...new Set(casou)],\n      });\n    }\n    // campo de texto livre com conteudo: registra para inspecao manual\n    const ultimo = caminho.split('.').pop() || '';\n    if (NOMES_TEXTO.test(ultimo) && s.trim()) {\n      textos.push({ caminho: caminho, valor: s.length > 300 ? s.slice(0, 300) + '...' : s });\n    }\n    return;\n  }\n\n  if (Array.isArray(no)) {\n    for (let i = 0; i < no.length; i++) varrer(no[i], caminho + '[' + i + ']', achados, textos);\n    return;\n  }\n\n  if (typeof no === 'object') {\n    for (const k of Object.keys(no)) {\n      varrer(no[k], caminho ? caminho + '.' + k : k, achados, textos);\n    }\n  }\n}\n\nconst chamadas = [];\n\n// 1) a nota (o fluxo diario ja' usa esta chamada para pegar cNumOs/xml/pdf)\nchamadas.push(await tentar('ObterNFSe', 'https://app.omie.com.br/api/v1/servicos/osdocs/', {\n  call: 'ObterNFSe', app_key: appKey, app_secret: appSecret,\n  param: [{ nIdNf: nIdNf }],\n}));\n\nawait new Promise((s) => setTimeout(s, 500));\n\n// 2) a Ordem de Servico (suspeita principal: faturamento e' POR OS)\nif (cNumOS) {\n  chamadas.push(await tentar('ConsultarOS', 'https://app.omie.com.br/api/v1/servicos/os/', {\n    call: 'ConsultarOS', app_key: appKey, app_secret: appSecret,\n    param: [{ cNumOS: cNumOS }],\n  }));\n}\n\nconst saida = [];\nfor (const c of chamadas) {\n  if (!c.ok) {\n    saida.push({ chamada: c.nome, ok: false, erro: c.erro });\n    continue;\n  }\n  const achados = [];\n  const textos = [];\n  varrer(c.resposta, '', achados, textos);\n\n  saida.push({\n    chamada: c.nome,\n    ok: true,\n    ACHOU_RF: achados.length > 0,\n    onde_o_rf_esta: achados,\n    campos_de_texto_livre: textos,\n    campos_no_topo: Object.keys(c.resposta || {}),\n    // resposta crua truncada, para eu ler a estrutura\n    resposta_crua: JSON.stringify(c.resposta).slice(0, 6000),\n  });\n}\n\nconst achouAlgum = saida.some(function (s) { return s.ACHOU_RF; });\nconsole.log('sonda concluida. Achou RF? ' + achouAlgum);\n\nreturn [{\n  json: {\n    nIdNf: nIdNf,\n    cNumOS: cNumOS,\n    padrao_procurado: String(PADRAO_RF),\n    ACHOU_RF_EM_ALGUMA: achouAlgum,\n    resultado: saida,\n  },\n}];\n"
+      },
+      "id": "snd",
+      "name": "Sonda_RF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Executar": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Sonda_RF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {},
+  "tags": []
+}
